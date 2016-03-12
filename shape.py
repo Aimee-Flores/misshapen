@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-This library contains functions to analyze waveform shape of oscillations
+This library is for characterizing the waveform shape of neural oscillations
 
 Functions
 1. findpt - find peaks and troughs of oscillations
