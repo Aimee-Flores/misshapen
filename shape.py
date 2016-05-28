@@ -15,7 +15,7 @@ Functions
 from __future__ import division
 import numpy as np
 
-def findpt(x, f_osc, f_lopass = None, Fs = 1000.,
+def findpt(x, f_osc, Fs = 1000.,
            filterfn=None, filter_kwargs=None, boundary = 0):
     """
     Calculate peaks and troughs over time series
@@ -207,16 +207,16 @@ def wfpha(x, Ps, Ts):
     return pha
 
 
-def _ampthresh(ampPC, x, fosc, Fs, Es, metric):
+def _ampthresh(ampTH, x, fosc, Fs, Es, metric):
     """
-    Restrict metric to data with sufficiently high amplitude
+    Restrict data to the time points at which the extrema 
     """
-    if ampPC > 0:
+    if ampTH > 0:
         from pacpy.pac import pa_series
         _, bamp = pa_series(x, x, fosc, fosc, fs=Fs)
         bamp = _edgeadd_paseries(bamp,fosc,Fs)
         bamp = bamp[Es]
-        bampTH = np.percentile(bamp,ampPC)
+        bampTH = np.percentile(bamp,ampTH)
         metric = metric[bamp>=bampTH]
     
     return metric
@@ -227,7 +227,7 @@ def _edgeadd_paseries(amp, fosc, Fs, w = 3):
     Undo the removal of edge artifacts done by pacpy in order to align
     the extrema with their amplitudes
     """
-    Ntaps = np.floor(w * Fs / fosc[0])
+    Ntaps = np.int(np.floor(w * Fs / fosc[0]))
     amp2 = np.zeros(len(amp)+2*Ntaps)
     amp2[Ntaps:-Ntaps] = amp
     return amp2
@@ -404,8 +404,8 @@ def esr(x, Ps, Ts, widthS, ampPC = 0, Fs = 1000, fosc = (13,30),
                        pthent = pthent)
         return np.max(np.vstack((PTr,1/PTr)),axis=0)
     elif esrmethod == 'aggregate':
-        psharp = np.mean(ex_sharp(x, Ps, widthS))
-        tsharp = np.mean(ex_sharp(x, Ts, widthS))
+        psharp = np.mean(ex_sharp(x, Ps, widthS,Fs=Fs,ampPC=ampPC,fosc=fosc))
+        tsharp = np.mean(ex_sharp(x, Ts, widthS,Fs=Fs,ampPC=ampPC,fosc=fosc))
         esr = np.max((psharp/tsharp,tsharp/psharp))
         return esr
     else:
