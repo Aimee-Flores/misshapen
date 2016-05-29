@@ -15,8 +15,7 @@ Functions
 from __future__ import division
 import numpy as np
 
-def findpt(x, f_osc, Fs = 1000.,
-           filterfn=None, filter_kwargs=None, boundary = 0):
+def findpt(x, f_osc, Fs = 1000.,boundary = 0):
     """
     Calculate peaks and troughs over time series
     
@@ -29,10 +28,6 @@ def findpt(x, f_osc, Fs = 1000.,
         zerocrossings of the oscillation
     Fs : float
         The sampling rate (default = 1000Hz)
-    filterfn : function, False
-        The filtering function, `filterfn(x, f_range, filter_kwargs)`
-    filter_kwargs : dict
-        Keyword parameters to pass to `filterfn(.)`
     boundary : int
         distance from edge of recording that an extrema must be in order to be
         accepted (in number of samples)
@@ -45,18 +40,12 @@ def findpt(x, f_osc, Fs = 1000.,
         indices at which oscillatory troughs occur in the input signal x
     """
     
-    # imports
-    from pacpy.filt import firf
-        
-    if filterfn is None:
-        filterfn = firf
-
-    if filter_kwargs is None:
-        filter_kwargs = {}
-
     # Filter in narrow band
-    xn = filterfn(x, f_osc, Fs, **filter_kwargs)
+    from pacpy.filt import firf
+    xn = firf(x, f_osc, Fs)
     xn = _edgeadd_paseries(xn,f_osc,Fs)
+    print len(x)
+    print len(xn)
     
     # Find zero crosses
     def fzerofall(data):
