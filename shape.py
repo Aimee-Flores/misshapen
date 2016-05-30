@@ -44,8 +44,6 @@ def findpt(x, f_osc, Fs = 1000.,boundary = 0):
     from pacpy.filt import firf
     xn = firf(x, f_osc, Fs)
     xn = _edgeadd_paseries(xn,f_osc,Fs)
-    print len(x)
-    print len(xn)
     
     # Find zero crosses
     def fzerofall(data):
