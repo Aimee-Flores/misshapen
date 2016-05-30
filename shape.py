@@ -15,7 +15,7 @@ Functions
 from __future__ import division
 import numpy as np
 
-def findpt(x, f_osc, Fs = 1000.,boundary = 0):
+def findpt(x, f_osc, Fs = 1000., w=3, boundary = 0):
     """
     Calculate peaks and troughs over time series
     
@@ -28,6 +28,8 @@ def findpt(x, f_osc, Fs = 1000.,boundary = 0):
         zerocrossings of the oscillation
     Fs : float
         The sampling rate (default = 1000Hz)
+    w : float
+        Number of cycles for the filter order of the band-pass filter
     boundary : int
         distance from edge of recording that an extrema must be in order to be
         accepted (in number of samples)
@@ -42,8 +44,7 @@ def findpt(x, f_osc, Fs = 1000.,boundary = 0):
     
     # Filter in narrow band
     from pacpy.filt import firf
-    xn = firf(x, f_osc, Fs)
-    xn = _edgeadd_paseries(xn,f_osc,Fs)
+    xn = firf(x, f_osc, Fs, w = w)
     
     # Find zero crosses
     def fzerofall(data):
