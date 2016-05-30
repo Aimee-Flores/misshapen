@@ -44,7 +44,7 @@ def findpt(x, f_osc, Fs = 1000., w=3, boundary = 0):
     
     # Filter in narrow band
     from pacpy.filt import firf
-    xn = firf(x, f_osc, Fs, w = w)
+    xn = firf(x, f_osc, Fs, w = w, rmvedge=False)
     
     # Find zero crosses
     def fzerofall(data):
