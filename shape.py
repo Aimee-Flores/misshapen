@@ -345,11 +345,8 @@ def rd_steepidx(x, Ps, Ts):
     return risesteep, decaysteep
     
     
-def rdsr(Rsteep,Dsteep,logrds = True):
-    if logrds:
-        return np.log10(np.max((np.mean(Rsteep)/np.mean(Dsteep),np.mean(Dsteep)/np.mean(Rsteep))))
-    else:
-        return np.max((np.mean(Rsteep)/np.mean(Dsteep),np.mean(Dsteep)/np.mean(Rsteep)))
+def rdsr(Rsteep,Dsteep):
+    return np.max((np.mean(Rsteep)/np.mean(Dsteep),np.mean(Dsteep)/np.mean(Rsteep)))
     
     
 def esr(x, Ps, Ts, widthS, ampPC = 0, Fs = 1000, fosc = (13,30),
