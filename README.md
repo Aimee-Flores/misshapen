@@ -4,9 +4,10 @@ A library to analyze the waveform shape of neural oscillations
 
 ## Current libraries
 
-- shape - main library
+- nonshape - functions for oscillatory analysis that are not concerned with waveform shape
+- shape - functions to analyze waveform shape of oscillations
 
 ## Demos
 
-* [Neural oscillation waveform characterization](https://github.com/voytekresearch/misshapen/blob/master/demo_Characterizing%20oscillatory%20waveform%20shape.ipynb)
+* [Shape library](https://github.com/voytekresearch/misshapen/blob/master/demo_Shape%20library.ipynb)
 * [Waveform-based phase estimation](https://github.com/voytekresearch/misshapen/blob/master/demo_Waveform%20phase%20estimate.ipynb)

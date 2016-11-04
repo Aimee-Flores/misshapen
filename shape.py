@@ -1,136 +1,213 @@
-# -*- coding: utf-8 -*-
 """
-This library is for characterizing the waveform shape of neural oscillations
-
-Functions
-1. findpt - find peaks and troughs of oscillations
-2. ex_sharp - calculate sharpness of oscillatory extrema
-3. esr - calculate extrema sharpness ratio (ESR)
-4. rd_steep - calculate rise and decay steepness
-5. rdsr - calculate rise-decay steepness ratio
-6. rd_steepidx - find steepest indices in each oscillatory rise and decay
-7. wfpha - estimate phase of an oscillation using a waveform-based approach
+This library contains metrics to quantify the shape of a waveform
+1. threshold_amplitude - only look at a metric while oscillatory amplitude is above a set percentile threshold
+2. rdratio: Ratio of rise time and decay time
+3. symPT: symmetry between peak and trough
+4. symRD: symmetry between rise and decay
+5. pt_sharp - calculate sharpness of oscillatory extrema
+6. rd_steep - calculate rise and decay steepness
+7. ptsr - calculate extrema sharpness ratio
+8. rdsr - calculate rise-decay steepness ratio
 """
 
 from __future__ import division
 import numpy as np
+from misshapen.nonshape import ampT, bandpass_default
 
-def findpt(x, f_osc, Fs = 1000., w=3, boundary = 0):
+
+def threshold_amplitude(x, metric, samples, percentile, frange, Fs, filter_fn=None, filter_kwargs=None):
     """
-    Calculate peaks and troughs over time series
+    Exclude from analysis the samples in which the amplitude falls below a defined percentile
     
     Parameters
     ----------
-    x : array-like 1d
-        voltage time series
-    f_osc : (low, high), Hz
-        frequency range for narrowband signal of interest, used to find 
-        zerocrossings of the oscillation
+    x : numpy array
+        raw time series
+    metric : numpy array
+        series of measures corresponding to time samples in 'samples' (e.g. peak sharpness)
+    samples : numpy array
+        time samples at which metric was computer (e.g. peaks)
+    percentile : float
+        percentile cutoff for exclusion (e.g. 10 = bottom 10% excluded)
+    frange : [lo, hi]
+        frequency range of interest for calculating amplitude
     Fs : float
-        The sampling rate (default = 1000Hz)
-    w : float
-        Number of cycles for the filter order of the band-pass filter
-    boundary : int
-        distance from edge of recording that an extrema must be in order to be
-        accepted (in number of samples)
-
+        Sampling rate (Hz)
+        
     Returns
     -------
-    Ps : array-like 1d
-        indices at which oscillatory peaks occur in the input signal x
-    Ts : array-like 1d
-        indices at which oscillatory troughs occur in the input signal x
+    metric_new : numpy array
+        same as input 'metric' but only for samples above the amplitude threshold
+    samples_new : numpy array
+        samples above the amplitude threshold
     """
     
-    # Filter in narrow band
-    from pacpy.filt import firf
-    xn = firf(x, f_osc, Fs, w = w, rmvedge=False)
+    # Do nothing if threshold is 0
+    if percentile == 0:
+        return metric, samples
     
-    # Find zero crosses
-    def fzerofall(data):
-        pos = data > 0
-        return (pos[:-1] & ~pos[1:]).nonzero()[0]
+    # Default filter function
+    if filter_fn is None:
+        filter_fn = bandpass_default
+    if filter_kwargs is None:
+        filter_kwargs = {}
 
-    def fzerorise(data):
-        pos = data < 0
-        return (pos[:-1] & ~pos[1:]).nonzero()[0]
+    # Calculate amplitude time series and threshold
+    amp = ampT(x, frange, Fs, rmv_edge = False, filter_fn=filter_fn, filter_kwargs=filter_kwargs)
+    amp = amp[samples]
+    amp_threshold = np.percentile(amp, percentile)
+    
+    # Update samples used
+    samples_new = samples[amp>=amp_threshold]
+    metric_new = metric[amp>=amp_threshold]
+    
+    return metric_new, samples_new
+    
 
-    zeroriseN = fzerorise(xn)
-    zerofallN = fzerofall(xn)
-
-    # Calculate # peaks and troughs
-    if zeroriseN[-1] > zerofallN[-1]:
-        P = len(zeroriseN) - 1
-        T = len(zerofallN)
+def rdratio(Ps, Ts):
+    """
+    Calculate the ratio between rise time and decay time for oscillations
+    
+    Note: must have the same number of peaks and troughs
+    Note: the final rise or decay is unused
+    
+    Parameters
+    ----------
+    Ps : numpy arrays 1d
+        time points of oscillatory peaks
+    Ts : numpy arrays 1d
+        time points of osillatory troughs
+        
+    Returns
+    -------
+    rdr : array-like 1d
+        rise-decay ratios for each oscillation
+    """
+    
+    # Assure input has the same number of peaks and troughs
+    if len(Ts) != len(Ps):
+        raise ValueError('Length of peaks and troughs arrays must be equal')
+        
+    # Assure Ps and Ts are numpy arrays
+    if type(Ps)==list or type(Ts)==list:
+        print 'Converted Ps and Ts to numpy arrays'
+        Ps = np.array(Ps)
+        Ts = np.array(Ts)
+        
+    # Calculate rise and decay times
+    if Ts[0] < Ps[0]:
+        riset = Ps[:-1] - Ts[:-1]
+        decayt = Ts[1:] - Ps[:-1]
     else:
-        P = len(zeroriseN)
-        T = len(zerofallN) - 1
-
-    # Calculate peak samples
-    Ps = np.zeros(P, dtype=int)
-    for p in range(P):
-        # Calculate the sample range between the most recent zero rise
-        # and the next zero fall
-        mrzerorise = zeroriseN[p]
-        nfzerofall = zerofallN[zerofallN > mrzerorise][0]
-        Ps[p] = np.argmax(x[mrzerorise:nfzerofall]) + mrzerorise
-
-    # Calculate trough samples
-    Ts = np.zeros(T, dtype=int)
-    for tr in range(T):
-        # Calculate the sample range between the most recent zero fall
-        # and the next zero rise
-        mrzerofall = zerofallN[tr]
-        nfzerorise = zeroriseN[zeroriseN > mrzerofall][0]
-        Ts[tr] = np.argmin(x[mrzerofall:nfzerorise]) + mrzerofall
-        
-    if boundary > 0:
-        Ps = _removeboundaryextrema(x, Ps, boundary)
-        Ts = _removeboundaryextrema(x, Ts, boundary)
-        
-    return Ps, Ts
+        riset = Ps[1:] - Ts[:-1]
+        decayt = Ts[:-1] - Ps[:-1]
+            
+    # Calculate ratio between each rise and decay time
+    rdr = riset / decayt.astype(float)
     
+    return riset, decayt, rdr
     
-def _removeboundaryextrema(x, Es, boundaryS):
+
+def symPT(x, Ps, Ts, window_half):
     """
-    Remove extrema close to the boundary of the recording
-    
+    Measure of asymmetry between oscillatory peaks and troughs
+
     Parameters
     ----------
     x : array-like 1d
         voltage time series
-    Es : array-like 1d
-        time points of oscillatory peaks or troughs
-    boundaryS : int
-        Number of samples around the boundary to reject extrema
+    Ps : array-like 1d
+        time points of oscillatory peaks
+    Ts : array-like 1d
+        time points of oscillatory troughs
+    window_half : int
+        Number of samples around extrema to analyze, in EACH DIRECTION
         
     Returns
     -------
-    newEs : array-like 1d
-        extremas that are not too close to boundary
+    sym : array-like 1d
+        measure of symmetry between each trough-peak pair
+        Result of 0 means the peak and trough are perfectly symmetric
     
+    Notes
+    -----
+    Opt 2: Roemer; The metric should be between 0 and 1
+    Inner product of Peak and Trough divided by the squareroot of the product of SSQ_peak and SSQ_trough
+    
+    I'll need to fine tune this to make it more complicated and less susceptible to noise
     """
     
-    # Calculate number of samples
-    nS = len(x)
-    
-    # Reject extrema too close to boundary
-    SampLims = (boundaryS, nS-boundaryS)
-    E = len(Es)
-    todelete = []
+    # Assure input has the same number of peaks and troughs
+    if len(Ts) != len(Ps):
+        raise ValueError('Length of peaks and troughs arrays must be equal')
+      
+    E = len(Ps)
+    sym = np.zeros(E)
     for e in range(E):
-        if np.logical_or(Es[e]<SampLims[0],Es[e]>SampLims[1]):
-            todelete = np.append(todelete,e)
-            
-    newEs = np.delete(Es,todelete)
+        # Find region around each peak and trough. Make extrema be 0
+        peak = x[Ps[e]-window_half:Ps[e]+window_half+1] - x[Ps[e]]
+        peak = -peak
+        trough = x[Ts[e]-window_half:Ts[e]+window_half+1] - x[Ts[e]]
+        
+        # Compare the two measures
+        peakenergy = np.sum(peak**2)
+        troughenergy = np.sum(trough**2)
+        energy = np.max((peakenergy,troughenergy))
+        diffenergy = np.sum((peak-trough)**2)
+        sym[e] = diffenergy / energy
+
+    return sym
     
-    return newEs
 
-
-def wfpha(x, Ps, Ts):
+def symRD(x, Ts, window_full):
     """
-    Use peaks and troughs calculated with findpt to calculate an instantaneous
-    phase estimate over time
+    Measure of asymmetry between oscillatory peaks and troughs
+
+    Parameters
+    ----------
+    x : array-like 1d
+        voltage time series
+    Ts : array-like 1d
+        time points of oscillatory troughs
+    window_full : int
+        Number of samples after peak to analyze for decay and before peak to analyze for rise
+        
+    Returns
+    -------
+    sym : array-like 1d
+        measure of symmetry between each rise and decay
+    """
+      
+    T = len(Ts)
+    sym = np.zeros(T)
+    for t in range(T):
+        # Find regions for the rise and the decay
+        rise = x[Ts[t]:Ts[t]+window_full+1] - x[Ts[t]]
+        decay = x[Ts[t]-window_full:Ts[t]+1] - x[Ts[t]]
+
+        # Ensure the minimum value is 0
+        rise[rise<0] = 0
+        decay[decay<0] = 0
+
+        # Make rises and decays go the same direction
+        rise = np.flipud(rise)
+        
+        # Calculate absolute difference between each point in the rise and decay
+        diffenergy = np.sum(np.abs(rise-decay))
+        
+        # Normalize this difference by the max voltage value at each point
+        rise_decay_maxes = np.max(np.vstack((rise,decay)),axis=0)
+        energy = np.sum(rise_decay_maxes)
+        
+        # Compare the two measures
+        sym[t] = diffenergy / energy
+        
+    return sym
+    
+    
+def pt_sharp(x, Ps, Ts, window_half, method='diff'):
+    """
+    Calculate the sharpness of extrema
     
     Parameters
     ----------
@@ -140,125 +217,42 @@ def wfpha(x, Ps, Ts):
         time points of oscillatory peaks
     Ts : array-like 1d
         time points of oscillatory troughs
-        
-    Returns
-    -------
-    pha : array-like 1d
-        instantaneous phase
-    """
-
-    # Initialize phase array
-    L = len(x)
-    pha = np.empty(L)
-    pha[:] = np.NAN
-    
-    pha[Ps] = 0
-    pha[Ts] = -np.pi
-
-    # Interpolate to find all phases
-    marks = np.logical_not(np.isnan(pha))
-    t = np.arange(L)
-    marksT = t[marks]
-    M = len(marksT)
-    for m in range(M - 1):
-        idx1 = marksT[m]
-        idx2 = marksT[m + 1]
-
-        val1 = pha[idx1]
-        val2 = pha[idx2]
-        if val2 <= val1:
-            val2 = val2 + 2 * np.pi
-
-        phatemp = np.linspace(val1, val2, idx2 - idx1 + 1)
-        pha[idx1:idx2] = phatemp[:-1]
-
-    # Interpolate the boundaries with the same rate of change as the adjacent
-    # sections
-    idx = np.where(np.logical_not(np.isnan(pha)))[0][0]
-    val = pha[idx]
-    dval = pha[idx + 1] - val
-    startval = val - dval * idx
-    # .5 for nonambiguity in arange length
-    pha[:idx] = np.arange(startval, val - dval * .5, dval)
-
-    idx = np.where(np.logical_not(np.isnan(pha)))[0][-1]
-    val = pha[idx]
-    dval = val - pha[idx - 1]
-    dval = np.angle(np.exp(1j * dval))  # Trestrict dval to between -pi and pi
-    # .5 for nonambiguity in arange length
-    endval = val + dval * (len(pha) - idx - .5)
-    pha[idx:] = np.arange(val, endval, dval)
-
-    # Restrict phase between -pi and pi
-    pha = np.angle(np.exp(1j * pha))
-
-    return pha
-
-
-def _ampthresh(ampTH, x, fosc, Fs, Es, metric):
-    """
-    Restrict data to the time points at which the extrema 
-    """
-    if ampTH > 0:
-        from pacpy.pac import pa_series
-        _, bamp = pa_series(x, x, fosc, fosc, fs=Fs)
-        bamp = _edgeadd_paseries(bamp,fosc,Fs)
-        bamp = bamp[Es]
-        bampTH = np.percentile(bamp,ampTH)
-        metric = metric[bamp>=bampTH]
-    
-    return metric
-
-
-def _edgeadd_paseries(amp, fosc, Fs, w = 3):
-    """
-    Undo the removal of edge artifacts done by pacpy in order to align
-    the extrema with their amplitudes
-    """
-    Ntaps = np.int(np.floor(w * Fs / fosc[0]))
-    amp2 = np.zeros(len(amp)+2*Ntaps)
-    amp2[Ntaps:-Ntaps] = amp
-    return amp2
-    
-    
-def ex_sharp(x, Es, widthS, ampPC = 0, Fs = 1000, fosc = (13,30),method='diff'):
-    """
-    Calculate the sharpness of extrema
-    
-    Parameters
-    ----------
-    x : array-like 1d
-        voltage time series
-    Es : array-like 1d
-        time points of oscillatory peaks or troughs
-    widthS : int
+    window_half : int
         Number of samples in each direction around extrema to use for sharpness estimation
-    ampPC : float (0 to 100)
-        The percentile threshold of beta (or other oscillation) amplitude 
-        for which an extrema needs to be included in the analysis
-    Fs : float
-        Sampling rate
-    fosc : (low, high), Hz
-        The frequency range of the oscillation identified by the extrema        
         
     Returns
     -------
-    sharps : array-like 1d
-        sharpness of each extrema is Es
+    Psharps : array-like 1d
+        sharpness of peaks
+    Tsharps : array-like 1d
+        sharpness of troughs
     
     """
-    E = len(Es)
-    sharps = np.zeros(E)
-    for e in range(E):
+    
+    # Assure input has the same number of peaks and troughs
+    if len(Ts) != len(Ps):
+        raise ValueError('Length of peaks and troughs arrays must be equal')
         
+    # Calculate the sharpness of each peak
+    P = len(Ps)
+    Psharps = np.zeros(P)
+    for e in range(P):
         if method == 'deriv':
-            Edata = x[Es[e]-widthS: Es[e]+widthS+1]
-            sharps[e] = np.mean(np.abs(np.diff(Edata)))
+            Edata = x[Ps[e]-window_half: Ps[e]+window_half+1]
+            Psharps[e] = np.mean(np.abs(np.diff(Edata)))
         elif method == 'diff':
-            sharps[e] = np.mean((x[Es[e]]-x[Es[e]-widthS],x[Es[e]]-x[Es[e]+widthS]))
-    sharps = np.abs(sharps)
-
-    return _ampthresh(ampPC,x,fosc,Fs,Es,sharps)
+            Psharps[e] = np.mean((x[Ps[e]]-x[Ps[e]-window_half],x[Ps[e]]-x[Ps[e]+window_half]))
+    
+    T = len(Ts)
+    Tsharps = np.zeros(T)
+    for e in range(T):
+        if method == 'deriv':
+            Edata = x[Ts[e]-window_half: Ts[e]+window_half+1]
+            Tsharps[e] = np.mean(np.abs(np.diff(Edata)))
+        elif method == 'diff':
+            Tsharps[e] = np.mean((x[Ts[e]-window_half]-x[Ts[e]],x[Ts[e]+window_half]-x[Ts[e]]))
+    
+    return Psharps, Tsharps
     
     
 def rd_steep(x, Ps, Ts):
@@ -272,7 +266,7 @@ def rd_steep(x, Ps, Ts):
     Ps : array-like 1d
         time points of oscillatory peaks
     Ts : array-like 1d
-        time points of oscillatory troughs     
+        time points of oscillatory troughs
         
     Returns
     -------
@@ -280,180 +274,48 @@ def rd_steep(x, Ps, Ts):
         max steepness in each period for rise
     decaysteep : array-like 1d
         max steepness in each period for decay
-    
     """
     
-    #Calculate the max Rise steepness (after trough)
-    if Ps[0] < Ts[0]:
-        riseadj = 1
-    else:
-        riseadj = 0
+    # Assure input has the same number of peaks and troughs
+    if len(Ts) != len(Ps):
+        raise ValueError('Length of peaks and troughs arrays must be equal')
         
-    T = len(Ts) - 1
-    risesteep = np.zeros(T)
-    for t in range(T):
-        rise = x[Ts[t]:Ps[t+riseadj]+1]
+    # Calculate rise and decay steepness
+    E = len(Ps) - 1
+    risesteep = np.zeros(E)
+    for t in range(E):
+        if Ts[0] < Ps[0]:
+            rise = x[Ts[t]:Ps[t]+1]
+        else:
+            rise = x[Ts[t]:Ps[t+1]+1]
         risesteep[t] = np.max(np.diff(rise))
         
-    P = len(Ps) - 1
-    decaysteep = np.zeros(P)
-    for p in range(P):
-        decay = x[Ps[p]:Ts[p-riseadj+1]+1]
+    decaysteep = np.zeros(E)
+    for p in range(E):
+        if Ts[0] < Ps[0]:
+            decay = x[Ps[p]:Ts[p+1]+1]
+        else:
+            decay = x[Ps[p]:Ts[p]+1]
         decaysteep[p] = -np.min(np.diff(decay))
         
     return risesteep, decaysteep
     
     
-def rd_steepidx(x, Ps, Ts):
-    """
-    Calculate the indices of max steepness of rises and decays
-    
-    Parameters
-    ----------
-    x : array-like 1d
-        voltage time series
-    Ps : array-like 1d
-        time points of oscillatory peaks
-    Ts : array-like 1d
-        time points of oscillatory troughs      
-        
-    Returns
-    -------
-    risesteep : array-like 1d
-        indices of max steepness in each period for rise
-    decaysteep : array-like 1d
-        indices of max steepness in each period for decay
-    
-    """
-    if Ps[0] < Ts[0]:
-        riseadj = 1
+def ptsr(Psharp,Tsharp, log = True, polarity = True):
+    if polarity:
+        sharpnessratio = Psharp/Tsharp
     else:
-        riseadj = 0
-        
-    T = len(Ts) - 1
-    risesteep = np.zeros(T)
-    for t in range(T):
-        rise = x[Ts[t]:Ps[t+riseadj]+1]
-        risesteep[t] = Ts[t] + np.argmax(np.diff(rise))
-        
-    P = len(Ps) - 1
-    decaysteep = np.zeros(P)
-    for p in range(P):
-        decay = x[Ps[p]:Ts[p-riseadj+1]+1]
-        decaysteep[p] = Ps[p] + np.argmin(np.diff(decay))
-        
-    return risesteep, decaysteep
+        sharpnessratio = np.max((Psharp/Tsharp,Tsharp/Psharp))
+    if log:
+        sharpnessratio = np.log10(sharpnessratio)
+    return sharpnessratio
     
     
-def rdsr(Rsteep,Dsteep):
-    return np.max((np.mean(Rsteep)/np.mean(Dsteep),np.mean(Dsteep)/np.mean(Rsteep)))
-    
-    
-def esr(x, Ps, Ts, widthS, ampPC = 0, Fs = 1000, fosc = (13,30),
-        pthent = True, esrmethod = 'adjacent'):
-    """Calculate extrema sharpness ratio: the peak/trough sharpness ratio
-    but fixed to be above 1.
-    Pairs are peaks and subsequent troughs
-    
-    Parameters
-    ----------
-    x : array-like 1d
-        voltage time series
-    Ps : array-like 1d
-        time points of oscillatory peaks
-    Ts : array-like 1d
-        time points of osillatory troughs
-    widthS : int
-        Number of samples in each direction around extrema to use for sharpness estimation
-    ampPC : float (0 to 100)
-        The percentile threshold of beta (or other oscillation) amplitude 
-        for which an extrema needs to be included in the analysis
-    Fs : float
-        Sampling rate
-    fosc : (low, high), Hz
-        The frequency range of the oscillation identified by the extrema
-    pthent : bool
-        if True: a period is defined as a peak and subsequent trough
-        if False: a period is defined as a trough and subsequent peak
-    esrmethod : string ('adjacent' or 'aggregate)
-    
-        
-    Returns
-    -------
-    esr : array-like 1d
-        extrema sharpness ratio for each period
-    """
-    
-    if esrmethod == 'adjacent':
-        PTr = _PTrsharp(x, Ps, Ts, widthS, ampPC = ampPC, Fs = Fs, fosc = fosc,
-                       pthent = pthent)
-        return np.max(np.vstack((PTr,1/PTr)),axis=0)
-    elif esrmethod == 'aggregate':
-        psharp = np.mean(ex_sharp(x, Ps, widthS,Fs=Fs,ampPC=ampPC,fosc=fosc))
-        tsharp = np.mean(ex_sharp(x, Ts, widthS,Fs=Fs,ampPC=ampPC,fosc=fosc))
-        esr = np.max((psharp/tsharp,tsharp/psharp))
-        return esr
+def rdsr(Rsteep,Dsteep, log = True, polarity = True):
+    if polarity:
+        steepnessratio = Rsteep/Dsteep
     else:
-        raise ValueError('Not a valid esrmethod entry')
-        
-    
-def _PTrsharp(x, Ps, Ts, widthS, ampPC = 0, Fs = 1000, fosc = (13,30),
-              pthent = True):
-    """Calculate peak-trough sharpness ratio
-    
-    Parameters
-    ----------
-    x : array-like 1d
-        voltage time series
-    Ps : array-like 1d
-        time points of oscillatory peaks
-    Ts : array-like 1d
-        time points of osillatory troughs
-    widthS : int
-        Number of samples in each direction around extrema to use for sharpness estimation
-    ampPC : float (0 to 100)
-        The percentile threshold of beta (or other oscillation) amplitude 
-        for which an extrema needs to be included in the analysis
-    Fs : float
-        Sampling rate
-    fosc : (low, high), Hz
-        The frequency range of the oscillation identified by the extrema
-    pthent : bool
-        if True: a period is defined as a peak and subsequent trough
-        if False: a period is defined as a trough and subsequent peak
-    
-        
-    Returns
-    -------
-    ptr : array-like 1d
-        peak-trough sharpness ratio for each period
-    """
-    
-    # Calculate sharpness of peaks and troughs
-    Psharp = ex_sharp(x, Ps, widthS)
-    Tsharp = ex_sharp(x, Ts, widthS)
-    
-    # Align peak and trough arrays to one another
-    if pthent:
-        if Ts[0] < Ps[0]:
-            Tsharp = Tsharp[1:]
-            Ts = Ts[1:]
-        if len(Psharp) == len(Tsharp)+1:
-            Psharp = Psharp[:-1]
-            Ps = Ps[:-1]
-    else:
-        if Ps[0] < Ts[0]:
-            Psharp = Psharp[1:]
-            Ps = Ps[1:]
-        if len(Tsharp) == len(Psharp)+1:
-            Tsharp = Tsharp[:-1]
-            Ts = Ts[:-1]
-            
-    ptr = Psharp/Tsharp
-    
-    # Only look at sharpness for sufficiently high oscillation amplitude
-    if pthent:
-        Es = Ps
-    else:
-        Es = Ts
-    return _ampthresh(ampPC,x,fosc,Fs,Es,ptr)
+        steepnessratio = np.max((Rsteep/Dsteep,Dsteep/Rsteep))
+    if log:
+        steepnessratio = np.log10(steepnessratio)
+    return steepnessratio
