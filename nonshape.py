@@ -5,7 +5,7 @@ Noteworthy util functions
 3. ampT: calculate amplitude time series
 4. findpt - find peaks and troughs of oscillations
     * _removeboundaryextrema - ignore peaks and troughs along the edge of the signal
-5. psd - calculate PSD with one of a few methods
+5. f_psd - calculate PSD with one of a few methods
 
 This library contains oscillatory metrics
 1. inter_peak_interval - calculate distribution of period lengths of an oscillation
@@ -92,6 +92,14 @@ def bandpass_default(x, f_range, Fs, rmv_edge = True, w = 3, plot_frequency_resp
         return x_filt[N_rmv:-N_rmv], Ntaps
     else:
         return x_filt, taps
+
+
+def notch_default(x, cf, bw, Fs, order = 3):
+    nyq_rate = Fs / 2.
+    f_range = [cf - bw / 2., cf + bw / 2.]
+    Wn = (f_range[0] / nyq_rate, f_range[1] / nyq_rate)
+    b, a = sp.signal.butter(order, Wn, 'bandstop')
+    return sp.signal.filtfilt(b, a, x)
         
     
 def phaseT(x, frange, Fs, rmv_edge = False, filter_fn=None, filter_kwargs=None):
@@ -281,7 +289,7 @@ def f_psd(x, Fs, method,
         temporal signal
     Fs : integer
         sampling rate
-    method : str in ['fftmed','welch]
+    method : str in ['fftmed','welch']
         Method for calculating PSD
     Hzmed : float
         relevant if method == 'fftmed'
@@ -909,8 +917,9 @@ def _2threshold_split_magnorm(frac_mag, thresh_hi, thresh_lo, band_mag, thresh_b
     return positive
     
     
-def oscdetect_whitten(x, f_range, Fs, thresh_hi = 3, thresh_lo = 1.5, magnitude = 'power', baseline = 'median',
-                    min_osc_periods = 3, filter_fn = bandpass_default, filter_kwargs = {}, return_normmag=False):
+def oscdetect_whitten(x, f_range, Fs, f_slope,
+                      filter_fn = bandpass_default, filter_kwargs = {},
+                      return_powerts=False):
     """
     Detect the time range of oscillations in a certain frequency band.
     Based on Whitten et al. 2011
@@ -923,20 +932,16 @@ def oscdetect_whitten(x, f_range, Fs, thresh_hi = 3, thresh_lo = 1.5, magnitude 
         frequency range for narrowband signal of interest
     Fs : float
         The sampling rate
-    thresh_hi : float
-        minimum magnitude-normalized value in order to force an oscillatory period
-    thresh_lo : float
-        minimum magnitude-normalized value to be included in an existing oscillatory period
-    magnitude : string in ('power', 'amplitude')
-        metric of magnitude used for thresholding
-    baseline : string in ('median', 'mean')
-        metric to normalize magnitude used for thresholding
-    min_osc_periods : float
-        minimum length of an oscillatory period in terms of the period length of f_range[0]
+    f_slope : (low, high), Hz
+        Frequency range over which to estimate slope
+        
     filter_fn : filter function with required inputs (x, f_range, Fs, rmv_edge)
         function to use to filter original time series, x
     filter_kwargs : dict
         keyword arguments to the filter_fn
+    return_powerts : bool
+        if True, output the power time series and plots of psd and interpolation
+        
         
     Returns
     -------
@@ -949,44 +954,30 @@ def oscdetect_whitten(x, f_range, Fs, thresh_hi = 3, thresh_lo = 1.5, magnitude 
     raise NotImplementedError('Function not written yet')
     
     # Calculate PSD
+    welch_params={'window':'hanning','nperseg':1000,'noverlap':None}
+    f, psd = f_psd(x, Fs, 'welch', welch_params=welch_params)
     
     # Calculate slope
+    slope_val, slopelineP, slopelineF = slope(f, psd, fslopelim = f_slope)
     
+    # Intepolate 1/f over the oscillation period
     
+    # Calculate power threshold
     
-    # CHANGE BELOW IS OLD
-    
-    # Filter signal
+    # Calculate instantaneous power
     x_filt, taps = filter_fn(x, f_range, Fs, rmv_edge=False, **filter_kwargs)
-    
-    # Quantify magnitude of the signal
-    ## Calculate amplitude
     x_amplitude = np.abs(sp.signal.hilbert(x_filt))
-    ## Set magnitude as power or amplitude
-    if magnitude == 'power':
-        x_magnitude = x_amplitude**2
-    elif magnitude == 'amplitude':
-        x_magnitude = x_amplitude
-    else:
-        raise ValueError("Invalid 'magnitude' parameter")
-        
-    # Calculate normalized magnitude
-    if baseline == 'median':
-        norm_mag = x_magnitude / np.median(x_magnitude)
-    elif baseline == 'mean':
-        norm_mag = x_magnitude / np.mean(x_magnitude)
-    else:
-        raise ValueError("Invalid 'baseline' parameter")
-
-    # Identify time periods of oscillation
+    
+    # Threshold power time series
     isosc = _2threshold_split(norm_mag, thresh_hi, thresh_lo)
     
-    # Remove short time periods of oscillation
-    min_period_length = int(np.ceil(min_osc_periods*Fs/f_range[0]))
+    # Find start times and end times for each oscillation
+    
+    # Reject oscillations that are too short
     isosc_noshort = _rmv_short_periods(isosc, min_period_length)
     
-    if return_normmag:
-        return isosc_noshort, taps, norm_mag
+    if return_powerts:
+        return isosc_noshort, taps, powerts
     else:
         return isosc_noshort, taps
 
