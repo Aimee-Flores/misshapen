@@ -941,7 +941,7 @@ def _2threshold_split_magnorm(frac_mag, thresh_hi, thresh_lo, band_mag, thresh_b
     
 def oscdetect_whitten(x, f_range, Fs, f_slope,
                       filter_fn = bandpass_default, filter_kwargs = {},
-                      return_powerts=False):
+                      return_powerts=False, percentile_thresh = .95):
     """
     Detect the time range of oscillations in a certain frequency band.
     Based on Whitten et al. 2011
@@ -963,6 +963,8 @@ def oscdetect_whitten(x, f_range, Fs, f_slope,
         keyword arguments to the filter_fn
     return_powerts : bool
         if True, output the power time series and plots of psd and interpolation
+    percentile_thresh : int (0 to 1)
+        the probability of the chi-square distribution at which to cut off oscillation
         
         
     Returns
@@ -983,23 +985,28 @@ def oscdetect_whitten(x, f_range, Fs, f_slope,
     slope_val, slopelineP, slopelineF = slope(f, psd, fslopelim = f_slope)
     
     # Intepolate 1/f over the oscillation period
+    fn_interp = sp.interpolate.interp1d(np.log10(slopelineF), np.log10(slopelineP))
+    f_osc_log = np.log10(np.arange(f_range[0],f_range[1]+1))
+    p_interp_log = fn_interp(f_osc_log)
     
     # Calculate power threshold
+    meanpower = 10**p_interp_log
+    powthresh = np.mean(sp.stats.chi2(percentile_thresh,2)*meanpower/2.)
     
     # Calculate instantaneous power
     x_filt, taps = filter_fn(x, f_range, Fs, rmv_edge=False, **filter_kwargs)
     x_amplitude = np.abs(sp.signal.hilbert(x_filt))
+    x_power = x_amplitude**2
     
-    # Threshold power time series
-    isosc = _2threshold_split(norm_mag, thresh_hi, thresh_lo)
-    
-    # Find start times and end times for each oscillation
+    # Threshold power time series to find time periods of an oscillation
+    isosc = x_power > powthresh
     
     # Reject oscillations that are too short
+    min_period_length = np.ceil(3 * Fs / float(f_range[1])) # 3 cycles of fastest freq
     isosc_noshort = _rmv_short_periods(isosc, min_period_length)
     
     if return_powerts:
-        return isosc_noshort, taps, powerts
+        return isosc_noshort, taps, x_power
     else:
         return isosc_noshort, taps
 
