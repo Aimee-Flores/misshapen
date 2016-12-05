@@ -32,6 +32,8 @@ import numpy as np
 from scipy import signal
 import scipy as sp
 import math
+from sklearn import linear_model
+import matplotlib.pyplot as plt
     
     
 def bandpass_default(x, f_range, Fs, rmv_edge = True, w = 3, plot_frequency_response = False):
@@ -733,7 +735,7 @@ def _rmv_short_periods(x, N):
     if np.sum(x)==0:
         return x
         
-    osc_changes = np.diff(x)
+    osc_changes = np.diff(1*x)
     osc_starts = np.where(osc_changes==1)[0]
     osc_ends = np.where(osc_changes==-1)[0]
 
@@ -937,11 +939,14 @@ def _2threshold_split_magnorm(frac_mag, thresh_hi, thresh_lo, band_mag, thresh_b
                     j_up_done = True
     
     return positive
-    
-    
+
+
 def oscdetect_whitten(x, f_range, Fs, f_slope,
+                      window_size_slope = 1000, window_size_spec = 1000,
                       filter_fn = bandpass_default, filter_kwargs = {},
-                      return_powerts=False, percentile_thresh = .95):
+                      return_powerts=False, percentile_thresh = .95,
+                      plot_spectral_slope_fit = False, plot_powerts = False,
+                      return_oscbounds = False):
     """
     Detect the time range of oscillations in a certain frequency band.
     Based on Whitten et al. 2011
@@ -956,7 +961,10 @@ def oscdetect_whitten(x, f_range, Fs, f_slope,
         The sampling rate
     f_slope : (low, high), Hz
         Frequency range over which to estimate slope
-        
+    window_size_slope : int
+        window size used when calculating power spectrum used to find baseline power (by fitting line)
+    window_size_spec : int
+        window size used when calculating power time series (spectrogram)
     filter_fn : filter function with required inputs (x, f_range, Fs, rmv_edge)
         function to use to filter original time series, x
     filter_kwargs : dict
@@ -965,50 +973,120 @@ def oscdetect_whitten(x, f_range, Fs, f_slope,
         if True, output the power time series and plots of psd and interpolation
     percentile_thresh : int (0 to 1)
         the probability of the chi-square distribution at which to cut off oscillation
+    plot_spectral_slope_fit : bool
+        if True, plot the linear fit in the power spectrum
+    plot_powerts : bool
+        if True, plot the power time series and original time series for the first 5000 samples
+    return_oscbounds : bool
+        if True, isntead of returning a boolean time series as the
         
         
     Returns
     -------
     isosc : array-like 1d
         binary time series. 1 = in oscillation; 0 = not in oscillation
-    taps : array-like 1d
-        filter kernel
+        if return_oscbounds is true: this is 2 lists with the start and end burst samples
     """
     
-    raise NotImplementedError('Function not written yet')
-    
-    # Calculate PSD
-    welch_params={'window':'hanning','nperseg':1000,'noverlap':None}
+    # Calculate power spectrum to find baseline power
+    welch_params={'window':'hanning','nperseg':window_size_slope,'noverlap':None}
     f, psd = f_psd(x, Fs, 'welch', welch_params=welch_params)
+
+    # Calculate slope around frequency band
+    f_sampleslope = f[np.logical_or(np.logical_and(f>=f_slope[0][0],f<=f_slope[0][1]),
+                                   np.logical_and(f>=f_slope[1][0],f<=f_slope[1][1]))]
+    slope_val, fit_logf, fit_logpower = spectral_slope(f, psd, f_sampleslope = f_sampleslope)
     
-    # Calculate slope
-    slope_val, slopelineP, slopelineF = slope(f, psd, fslopelim = f_slope)
-    
+    # Confirm slope fit is reasonable
+    if plot_spectral_slope_fit:
+        plt.figure(figsize=(6,3))
+        plt.loglog(f,psd,'k-')
+        plt.loglog(10**fit_logf, 10**fit_logpower,'r--')
+        plt.xlabel('Frequency (Hz)')
+        plt.ylabel('Power (uV^2/Hz)')
+        
     # Intepolate 1/f over the oscillation period
-    fn_interp = sp.interpolate.interp1d(np.log10(slopelineF), np.log10(slopelineP))
+    fn_interp = sp.interpolate.interp1d(fit_logf, fit_logpower)
     f_osc_log = np.log10(np.arange(f_range[0],f_range[1]+1))
     p_interp_log = fn_interp(f_osc_log)
     
     # Calculate power threshold
     meanpower = 10**p_interp_log
-    powthresh = np.mean(sp.stats.chi2(percentile_thresh,2)*meanpower/2.)
+    powthresh = np.mean(sp.stats.chi2.ppf(percentile_thresh,2)*meanpower/2.)
+    
+    # Calculate spectrogram and power time series
+    # Note that these spectral statistics are calculated using the 'psd' mode common to both 'spectrogram' and 'welch' in scipy.signal
+    f, t_spec, x_spec_pre = sp.signal.spectrogram(x, fs=Fs, window='hanning', nperseg=window_size_spec, noverlap=window_size_spec-1, mode='psd')
+    
+    # pad spectrogram with 0s to match the original time series
+    t = np.arange(0,len(x)/float(Fs),1/float(Fs))
+    x_spec = np.zeros((len(f),len(t)))
+    tidx_start = np.where(np.abs(t-t_spec[0])<1/float(10*Fs))[0][0]
+    x_spec[:,tidx_start:tidx_start+len(t_spec)]=x_spec_pre
     
     # Calculate instantaneous power
-    x_filt, taps = filter_fn(x, f_range, Fs, rmv_edge=False, **filter_kwargs)
-    x_amplitude = np.abs(sp.signal.hilbert(x_filt))
-    x_power = x_amplitude**2
+    fidx_band = np.where(np.logical_and(f>=f_range[0],f<=f_range[1]))[0]
+    x_bandpow = np.mean(x_spec[fidx_band],axis=0)
     
+    # Visualize bandpower time series
+    if plot_powerts:
+        tmax = np.min((len(x_bandpow),5000))
+        samp_plt=range(0, tmax)
+        plt.figure(figsize=(10,4))
+        plt.subplot(2,1,1)
+        plt.plot(x[samp_plt],'k')
+        plt.ylabel('Voltage (uV)')
+        plt.subplot(2,1,2)
+        plt.semilogy(x_bandpow[samp_plt],'r')
+        plt.semilogy(range(tmax),[powthresh]*tmax,'k--')
+        plt.ylabel('Band power')
+        plt.xlabel('Time (samples)')
+
     # Threshold power time series to find time periods of an oscillation
-    isosc = x_power > powthresh
-    
+    isosc = x_bandpow > powthresh
+
     # Reject oscillations that are too short
-    min_period_length = np.ceil(3 * Fs / float(f_range[1])) # 3 cycles of fastest freq
-    isosc_noshort = _rmv_short_periods(isosc, min_period_length)
+    min_burst_length = int(np.ceil(3 * Fs / float(f_range[1]))) # 3 cycles of fastest freq
+    isosc_noshort, osc_starts, osc_ends = _rmv_short_periods_whitten(isosc, min_burst_length)
     
-    if return_powerts:
-        return isosc_noshort, taps, x_power
+    if return_oscbounds:
+        if return_powerts:
+            return osc_starts, osc_ends, x_bandpow
+        return osc_starts, osc_ends
     else:
-        return isosc_noshort, taps
+        if return_powerts:
+            return isosc_noshort, x_bandpow
+        return isosc_noshort
+    
+    
+def _rmv_short_periods_whitten(x, N):
+    """Remove periods that ==1 for less than N samples"""
+    
+    if np.sum(x)==0:
+        return x
+        
+    osc_changes = np.diff(1*x)
+    osc_starts = np.where(osc_changes==1)[0]
+    osc_ends = np.where(osc_changes==-1)[0]
+    
+    if len(osc_starts)==0:
+        osc_starts = [0]
+    if len(osc_ends)==0:
+        osc_ends = [len(osc_changes)]
+
+    if osc_ends[0] < osc_starts[0]:
+        osc_starts = np.insert(osc_starts, 0, 0)
+    if osc_ends[-1] < osc_starts[-1]:
+        osc_ends = np.append(osc_ends, len(osc_changes))
+
+    osc_length = osc_ends - osc_starts
+    osc_starts_long = osc_starts[osc_length>=N]
+    osc_ends_long = osc_ends[osc_length>=N]
+
+    is_osc = np.zeros(len(x))
+    for osc in range(len(osc_starts_long)):
+        is_osc[osc_starts_long[osc]:osc_ends_long[osc]] = 1
+    return is_osc, osc_starts_long, osc_ends_long
 
 
 def signal_to_bursts(x, f_range, Fs, burst_fn = None, burst_kwargs = None):
@@ -1248,3 +1326,52 @@ def slope(f, psd, fslopelim = (80,200), flatten_thresh = 0):
     slopes = slopes[0]
 
     return slopes, slopelineP, slopelineF
+    
+    
+def spectral_slope(f, psd, f_sampleslope = np.arange(80,200), flatten_thresh = 0):
+    '''
+    Calculate the slope of the power spectrum
+    
+    NOTE:
+    This is an update to the 'slope' function that should be deprecated
+    
+    Parameters
+    ----------
+    f : array
+        frequencies corresponding to power spectrum
+    psd : array
+        power spectrum
+    fslopelim : 2-element list
+        frequency range to fit slope
+    flatten_thresh : float
+        See foof.utils
+        
+    Returns
+    -------
+    slope_value : float
+        slope of psd (chi)
+    fit_logf : array
+        linear fit of the PSD in log-log space (includes information of offset)
+    fit_logpower : array
+        frequency array corresponding to slopebyf
+    
+    '''    
+    # Define frequency and power values to fit in log-log space
+    fit_logf = np.log10(f_sampleslope)
+    y = np.log10(psd[f_sampleslope.astype(int)])
+
+    # Fit a linear model
+    lm = linear_model.RANSACRegressor(random_state=42)
+    lm.fit(fit_logf[:, np.newaxis], y)
+    
+    # Find the line of best fit using the provided frequencies
+    fit_logpower = lm.predict(fit_logf[:, np.newaxis])
+    psd_flat = y - fit_logpower.flatten()
+    mask = (psd_flat / psd_flat.max()) < flatten_thresh
+    psd_flat[mask] = 0
+
+    # Find the chi value
+    slope_value = lm.estimator_.coef_
+    slope_value = slope_value[0]
+
+    return slope_value, fit_logf, fit_logpower
