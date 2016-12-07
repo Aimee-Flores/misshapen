@@ -36,7 +36,7 @@ from sklearn import linear_model
 import matplotlib.pyplot as plt
     
     
-def bandpass_default(x, f_range, Fs, rmv_edge = True, w = 3, plot_frequency_response = False):
+def bandpass_default(x, f_range, Fs, rmv_edge = True, w = 3, plot_frequency_response = False, Ntaps = None):
     """
     Default bandpass filter
     
@@ -54,6 +54,9 @@ def bandpass_default(x, f_range, Fs, rmv_edge = True, w = 3, plot_frequency_resp
         if True, remove edge artifacts
     plot_frequency_response : bool
         if True, plot the frequency response of the filter
+    Ntaps : int
+        Length of filter; overrides 'w' parameter.
+        MUST BE ODD. Or value is increased by 1.
         
     Returns
     -------
@@ -63,8 +66,10 @@ def bandpass_default(x, f_range, Fs, rmv_edge = True, w = 3, plot_frequency_resp
         filter kernel
     """
     
-    # Design filter
-    Ntaps = np.ceil(Fs*w/f_range[0])
+    # Default Ntaps as w if not provided
+    if Ntaps is None:
+        Ntaps = np.ceil(Fs*w/f_range[0])
+    
     # Force Ntaps to be odd
     if Ntaps % 2 == 0:
         Ntaps = Ntaps + 1
