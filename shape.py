@@ -8,11 +8,12 @@ This library contains metrics to quantify the shape of a waveform
 6. rd_steep - calculate rise and decay steepness
 7. ptsr - calculate extrema sharpness ratio
 8. rdsr - calculate rise-decay steepness ratio
+9. average_waveform_trigger - calculate the average waveform of an oscillation by triggering on peak or trough
 """
 
 from __future__ import division
 import numpy as np
-from misshapen.nonshape import ampT, bandpass_default
+from misshapen.nonshape import ampT, bandpass_default, findpt
 
 
 def threshold_amplitude(x, metric, samples, percentile, frange, Fs, filter_fn=None, filter_kwargs=None):
@@ -319,3 +320,168 @@ def rdsr(Rsteep,Dsteep, log = True, polarity = True):
     if log:
         steepnessratio = np.log10(steepnessratio)
     return steepnessratio
+
+
+def average_waveform_trigger(x, f_range, Fs, avgwave_halflen, trigger = 'trough'):
+    """
+    Calculate the average waveform of a signal by triggering on the peaks or troughs
+
+    Parameters
+    ----------
+    x : array-like 1d
+        voltage time series
+    f_range : (low, high), Hz
+        frequency range for narrowband signal of interest
+    Fs : float
+        The sampling rate
+    avgwave_halflen : float
+        length of time for the averaged signal to be recorded in the positive and negative direction
+    trigger : str
+        'trough' to trigger the averaging on each trough
+        'peak' to trigger the averaging on each peak
+
+    Returns
+    -------
+    avg_wave : array-like 1d
+        the average waveform in 'x' in the frequency 'f_range' triggered on 'trigger'
+
+    """
+    # Set up the parameters for averaging
+    dt = 1/float(Fs)
+    t_avg_wave = np.arange(-avgwave_halflen,avgwave_halflen+dt, dt)
+    N_samples_halflen = int(avgwave_halflen*Fs)
+    
+    # Find the trigger points for averaging
+    Ps, Ts = findpt(x, f_range, Fs, boundary = N_samples_halflen+1)
+    if trigger == 'trough':
+        trig_samps = Ts
+    elif trigger == 'peak':
+        trig_samps = Ps
+    else:
+        raise ValueError('Trigger not implemented')
+        
+    # Do the averaging at each trigger
+    avg_wave = np.zeros(int(N_samples_halflen*2+1))
+    N_triggers = len(trig_samps)
+    for i in range(N_triggers):
+        avg_wave += x[trig_samps[i]-N_samples_halflen:trig_samps[i]+N_samples_halflen+1]
+    avg_wave = avg_wave/N_triggers
+    return t_avg_wave, avg_wave
+
+
+def gips_patterns(x, Fs, L, G,
+                  max_iterations = 100, T = 1):
+    """
+    Find recurring patterns in a time series using the method by Bart Gips.
+    
+    Calculate the average waveform of a signal by triggering on the peaks or troughs
+
+    Parameters
+    ----------
+    x : array-like 1d
+        voltage time series
+    Fs : float
+        The sampling rate (samples per second)
+    L : float
+        Window length (seconds)
+    G : float
+        Minimum window spacing (seconds)
+    T : float
+        temperature parameter. Controls acceptance probability
+    max_iterations : int
+        Maximum number of iterations for the pattern finder
+
+    Returns
+    -------
+    avg_wave : array-like 1d
+        the average waveform in 'x' in the frequency 'f_range' triggered on 'trigger'
+
+    """
+    
+    # Initialize window positions, separated by 2*G
+    L_samp = int(L*Fs)
+    G_samp = int(G*Fs)
+    window_starts = np.arange(0,len(x)-L_samp,2*G_samp)
+    
+    # Calculate the total number of windows
+    N_windows = len(window_starts)
+    
+    # Calculate initial cost
+    J = np.zeros(max_iterations)
+    X = np.zeros(max_iterations)
+    J[0] = _gips_compute_J(x, window_starts, L_samp)
+    
+    # Randomly sample windows with replacement
+    random_window_idx = np.random.choice(range(N_windows),size=max_iterations)
+    
+    # Optimize X
+    iter_num = 1
+    while iter_num < max_iterations:
+        print iter_num
+        
+        # Pick a random window position
+        window_idx_replace = random_window_idx[iter_num]
+        
+        # Find a new allowed position for the window
+        # OH. CHANGE IT IN THE WINDOW ARRAY. at the end have all windows
+        window_starts_temp = np.copy(window_starts)
+        window_starts_temp[window_idx_replace] = _gips_find_new_windowidx(window_starts, G_samp, L_samp, len(x)-L_samp)
+        
+        # Calculate the cost
+        J_temp = _gips_compute_J(x, window_starts_temp, L_samp)
+        
+        # Calculate the change in cost function
+        deltaJ = J_temp - J[iter_num-1]
+        
+        # Calculate the acceptance probability
+        p_accept = np.exp(-deltaJ/float(T))
+        
+        # Accept update to J with a certain probability
+        if np.random.rand() < p_accept:
+            # Update J
+            J[iter_num] = J_temp
+            # Update X
+            window_starts = window_starts_temp
+        else:
+            # Update J
+            J[iter_num] = J[iter_num-1]
+            
+        # Update iteration number
+        iter_num += 1
+        
+    return window_starts, J
+        
+        
+def _gips_compute_J(x, window_starts, L_samp):
+    """Compute the cost, which is the average distance between all windows"""
+    
+    # Get all windows and zscore them
+    N_windows = len(window_starts)
+    windows = np.zeros((N_windows,L_samp))
+    for w in range(N_windows):
+        temp = x[window_starts[w]:window_starts[w]+L_samp]
+        windows[w] = (temp - np.mean(temp))/np.std(temp)
+    
+    # Calculate distances for all pairs of windows
+    d = []
+    for i in range(N_windows):
+        for j in range(i+1,N_windows):
+            window_diff = windows[i]-windows[j]
+            d_temp = 1/float(L_samp) * np.sum(window_diff**2)
+            d.append(d_temp)
+    # Calculate cost
+    J = 1/float(2*(N_windows-1))*np.sum(d)
+    return J
+
+
+def _gips_find_new_windowidx(window_starts, G_samp, L_samp, N_samp):
+    """Find a new sample for the starting window"""
+    
+    found = False
+    while found == False:
+        # Generate a random sample
+        new_samp = np.random.randint(N_samp)
+        # Check how close the sample is to other window starts
+        dists = np.abs(window_starts - new_samp)
+        if np.min(dists) > G_samp:
+            return new_samp
