@@ -1,14 +1,16 @@
 """
 This library contains metrics to quantify the shape of a waveform
 1. threshold_amplitude - only look at a metric while oscillatory amplitude is above a set percentile threshold
-2. rdratio: Ratio of rise time and decay time
-3. symPT: symmetry between peak and trough
-4. symRD: symmetry between rise and decay
+2. rdratio - Ratio of rise time and decay time
+3. symPT - symmetry between peak and trough
+4. symRD - symmetry between rise and decay
 5. pt_sharp - calculate sharpness of oscillatory extrema
 6. rd_steep - calculate rise and decay steepness
 7. ptsr - calculate extrema sharpness ratio
 8. rdsr - calculate rise-decay steepness ratio
 9. average_waveform_trigger - calculate the average waveform of an oscillation by triggering on peak or trough
+10. gips_patterns - identify a repeated waveform in the signal
+11. rd_diff - normalized difference between rise and decay time
 """
 
 from __future__ import division
@@ -370,11 +372,15 @@ def average_waveform_trigger(x, f_range, Fs, avgwave_halflen, trigger = 'trough'
 
 
 def gips_patterns(x, Fs, L, G,
-                  max_iterations = 100, T = 1):
+                  max_iterations = 100, T = 1, window_starts_custom = None):
     """
     Find recurring patterns in a time series using the method by Bart Gips.
     
     Calculate the average waveform of a signal by triggering on the peaks or troughs
+
+    Note should high-pass if looking at high frequency activity so that it does not converge on a low frequency motif
+
+    L and G should be chosen to be about the size of the motif of interest, and the N derived should be about the number of occurrences
 
     Parameters
     ----------
@@ -390,18 +396,26 @@ def gips_patterns(x, Fs, L, G,
         temperature parameter. Controls acceptance probability
     max_iterations : int
         Maximum number of iterations for the pattern finder
+    window_starts_custom : np.ndarray (1d)
+        Pre-set locations of initial windows (instead of evenly spaced by 2G)
 
     Returns
     -------
-    avg_wave : array-like 1d
+    avg_wave : np.ndarray (1d)
         the average waveform in 'x' in the frequency 'f_range' triggered on 'trigger'
-
+    window_starts : np.ndarray (1d)
+        indices at which each window begins for the final set of windows
+    J : np.ndarray (1d)
+        History of costs
     """
     
     # Initialize window positions, separated by 2*G
     L_samp = int(L*Fs)
     G_samp = int(G*Fs)
-    window_starts = np.arange(0,len(x)-L_samp,2*G_samp)
+    if window_starts_custom is None:
+        window_starts = np.arange(0,len(x)-L_samp,2*G_samp)
+    else:
+        window_starts = window_starts_custom
     
     # Calculate the total number of windows
     N_windows = len(window_starts)
@@ -448,8 +462,15 @@ def gips_patterns(x, Fs, L, G,
             
         # Update iteration number
         iter_num += 1
+
+    # Calculate average wave
+    avg_wave = np.zeros(L_samp)
+    for w in range(N_windows):
+        avg_wave = avg_wave + x[window_starts[w]:window_starts[w]+L_samp]
+    avg_wave = avg_wave/float(N_windows)
+
         
-    return window_starts, J
+    return avg_wave, window_starts, J
         
         
 def _gips_compute_J(x, window_starts, L_samp):
@@ -485,3 +506,45 @@ def _gips_find_new_windowidx(window_starts, G_samp, L_samp, N_samp):
         dists = np.abs(window_starts - new_samp)
         if np.min(dists) > G_samp:
             return new_samp
+    
+
+def rd_diff(Ps, Ts):
+    """
+    Calculate the normalized difference between rise and decay times,
+    as Gips, 2017 refers to as the "skewnwss index"
+    SI = (T_up-T_down)/(T_up+T_down)
+    
+    Parameters
+    ----------
+    Ps : numpy arrays 1d
+        time points of oscillatory peaks
+    Ts : numpy arrays 1d
+        time points of osillatory troughs
+        
+    Returns
+    -------
+    rdr : array-like 1d
+        rise-decay ratios for each oscillation
+    """
+    
+    # Assure input has the same number of peaks and troughs
+    if len(Ts) != len(Ps):
+        raise ValueError('Length of peaks and troughs arrays must be equal')
+        
+    # Assure Ps and Ts are numpy arrays
+    if type(Ps)==list or type(Ts)==list:
+        print 'Converted Ps and Ts to numpy arrays'
+        Ps = np.array(Ps)
+        Ts = np.array(Ts)
+        
+    # Calculate rise and decay times
+    if Ts[0] < Ps[0]:
+        riset = Ps[:-1] - Ts[:-1]
+        decayt = Ts[1:] - Ps[:-1]
+    else:
+        riset = Ps[1:] - Ts[:-1]
+        decayt = Ts[:-1] - Ps[:-1]
+            
+    # Calculate ratio between each rise and decay time
+    rdr = (riset-decayt) / float(riset+decayt)
+    return riset, decayt, rdr
