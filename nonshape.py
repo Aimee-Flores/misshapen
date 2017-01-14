@@ -205,10 +205,24 @@ def fasthilbert(x, axis=-1):
     return x[:N]
 
 
+def _fzerofall(data):
+    """Find zerocrossings on falling edge"""
+    pos = data > 0
+    return (pos[:-1] & ~pos[1:]).nonzero()[0]
+
+def _fzerorise(data):
+    """Find zerocrossings on rising edge"""
+    pos = data < 0
+    return (pos[:-1] & ~pos[1:]).nonzero()[0]
+
+
 def findpt(x, f_range, Fs, boundary = None, forcestart = 'peak',
             filter_fn = bandpass_default, filter_kwargs = {}):
     """
     Calculate peaks and troughs over time series
+    
+    NOTE:
+        This function assures that there are the same number of peaks and troughs
     
     Parameters
     ----------
@@ -245,18 +259,9 @@ def findpt(x, f_range, Fs, boundary = None, forcestart = 'peak',
 
     # Filter signal
     xn, taps = filter_fn(x, f_range, Fs, rmv_edge=False, **filter_kwargs)
-    
-    # Find zero crosses
-    def fzerofall(data):
-        pos = data > 0
-        return (pos[:-1] & ~pos[1:]).nonzero()[0]
 
-    def fzerorise(data):
-        pos = data < 0
-        return (pos[:-1] & ~pos[1:]).nonzero()[0]
-
-    zeroriseN = fzerorise(xn)
-    zerofallN = fzerofall(xn)
+    zeroriseN = _fzerorise(xn)
+    zerofallN = _fzerofall(xn)
 
     # Calculate # peaks and troughs
     if zeroriseN[-1] > zerofallN[-1]:
@@ -305,6 +310,58 @@ def findpt(x, f_range, Fs, boundary = None, forcestart = 'peak',
         raise ValueError('Parameter forcestart is invalid')
         
     return Ps, Ts
+
+
+def findzerox(x, Ps, Ts):
+    """
+    Find theoretical zerocrossings within each cycle.
+    A rising zerocrossing occurs when the voltage crosses
+    midway between the trough voltage and subsequent peak voltage.
+    A decay zerocrossing is defined similarly.
+    If this voltage is crossed at multiple times, the temporal median is taken.
+    
+    Parameters
+    ----------
+    x : array-like 1d
+        voltage time series
+    Ps : numpy arrays 1d
+        time points of oscillatory peaks
+    Ts : numpy arrays 1d
+        time points of osillatory troughs
+
+    Returns
+    -------
+    zeroxR : array-like 1d
+        indices at which oscillatory rising zerocrossings occur
+    zeroxD : array-like 1d
+        indices at which oscillatory decaying zerocrossings occur
+    """
+
+    # Calculate the number of rises and decays
+    if Ps[0] < Ts[0]:
+        N_rises = len(Ps) - 1
+        N_decays = len(Ts)
+        idx_bias = 0
+    else:
+        N_rises = len(Ps)
+        N_decays = len(Ts) - 1
+        idx_bias = 1
+    
+    # Find zerocrossings for rise
+    zeroxR = np.zeros(N_rises, dtype=int)
+    for i in range(N_rises):
+        x_temp = np.copy(x[Ts[i]:Ps[i+1-idx_bias]+1])
+        x_temp -= (x_temp[0]+x_temp[-1])/2.
+        zeroxR[i] = Ts[i] + int(np.median(_fzerorise(x_temp)))
+
+    # Find zerocrossings for decays
+    zeroxD = np.zeros(N_decays, dtype=int)
+    for i in range(N_decays):
+        x_temp = np.copy(x[Ps[i]:Ts[i+idx_bias]+1])
+        x_temp -= (x_temp[0]+x_temp[-1])/2.
+        zeroxD[i] = Ps[i] + int(np.median(_fzerofall(x_temp)))    
+
+    return zeroxR, zeroxD
     
     
 def f_psd(x, Fs, method,

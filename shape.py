@@ -2,6 +2,7 @@
 This library contains metrics to quantify the shape of a waveform
 1. threshold_amplitude - only look at a metric while oscillatory amplitude is above a set percentile threshold
 2. rdratio - Ratio of rise time and decay time
+3. pt_duration - Peak and trough durations and their ratio
 3. symPT - symmetry between peak and trough
 4. symRD - symmetry between rise and decay
 5. pt_sharp - calculate sharpness of oscillatory extrema
@@ -9,7 +10,7 @@ This library contains metrics to quantify the shape of a waveform
 7. ptsr - calculate extrema sharpness ratio
 8. rdsr - calculate rise-decay steepness ratio
 9. average_waveform_trigger - calculate the average waveform of an oscillation by triggering on peak or trough
-10. gips_patterns - identify a repeated waveform in the signal
+10. gips_swm - identify a repeated waveform in the signal
 11. rd_diff - normalized difference between rise and decay time
 """
 
@@ -109,6 +110,76 @@ def rdratio(Ps, Ts):
     rdr = riset / decayt.astype(float)
     
     return riset, decayt, rdr
+    
+
+def pt_duration(Ps, Ts, zeroxR, zeroxD):
+    """
+    Calculate the ratio between peak and trough durations
+    
+    NOTE: must have the same number of peaks and troughs
+    NOTE: the durations of the first and last extrema will be estimated by using the only zerox they have
+    
+    Parameters
+    ----------
+    Ps : numpy arrays 1d
+        time points of oscillatory peaks
+    Ts : numpy arrays 1d
+        time points of osillatory troughs
+    zeroxR : array-like 1d
+        indices at which oscillatory rising zerocrossings occur
+    zeroxD : array-like 1d
+        indices at which oscillatory decaying zerocrossings occur
+        
+    Returns
+    -------
+    Ps_dur : array-like 1d
+        peak-trough duration ratios for each oscillation
+    Ts_dur : array-like 1d
+        peak-trough duration ratios for each oscillation
+    ptr : array-like 1d
+        peak-trough duration ratios for each oscillation
+    """
+    
+    # Assure input has the same number of peaks and troughs
+    if len(Ts) != len(Ps):
+        raise ValueError('Length of peaks and troughs arrays must be equal')
+        
+    # Assure Ps and Ts are numpy arrays
+    if type(Ps)==list or type(Ts)==list:
+        print 'Converted Ps and Ts to numpy arrays'
+        Ps = np.array(Ps)
+        Ts = np.array(Ts)
+        
+    # Calculate the duration of each peak and trough until last
+    Ps_dur = np.zeros(len(Ps))
+    Ts_dur = np.zeros(len(Ts))
+    if Ps[0] < Ts[0]:
+        # treat first extrema differently
+        Ps_dur[0] = 2*(zeroxD[0] - Ps[0])
+        # duration of each peak
+        for i in range(1, len(Ps)-1):
+            Ps_dur[i] = (zeroxD[i] - zeroxR[i-1])
+        # duration of each trough
+        for i in range(len(Ts)-1):
+            Ts_dur[i] = (zeroxR[i] - zeroxD[i])
+    else:
+        Ts_dur[0] = 2*(zeroxR[0] - Ts[0])
+        for i in range(len(Ps)-1):
+            Ps_dur[i] = (zeroxD[i] - zeroxR[i])
+        # duration of each trough
+        for i in range(1, len(Ts)-1):
+            Ts_dur[i] = (zeroxR[i] - zeroxD[i-1])
+            
+    # Treat last extrema differently
+    if Ps[-1] < Ts[-1]:
+        Ps_dur[-1] = (zeroxD[-1] - zeroxR[-1]) 
+        Ts_dur[-1] = 2*(Ts[-1] - zeroxD[-1])
+    else:
+        Ps_dur[-1] = 2*(Ps[-1] - zeroxR[-1])
+        Ts_dur[-1] = (zeroxR[-1] - zeroxD[-1])
+        
+    ptr = Ps_dur/Ts_dur
+    return Ps_dur, Ts_dur, ptr
     
 
 def symPT(x, Ps, Ts, window_half):
@@ -371,10 +442,12 @@ def average_waveform_trigger(x, f_range, Fs, avgwave_halflen, trigger = 'trough'
     return t_avg_wave, avg_wave
 
 
-def gips_patterns(x, Fs, L, G,
+def gips_swm(x, Fs, L, G,
                   max_iterations = 100, T = 1, window_starts_custom = None):
     """
-    Find recurring patterns in a time series using the method by Bart Gips.
+    Sliding window matching methods to find recurring patterns in a time series
+    using the method by Bart Gips in J Neuro Methods 2017.
+    See matlab code at: https://github.com/bartgips/SWM
     
     Calculate the average waveform of a signal by triggering on the peaks or troughs
 
@@ -422,7 +495,6 @@ def gips_patterns(x, Fs, L, G,
     
     # Calculate initial cost
     J = np.zeros(max_iterations)
-    X = np.zeros(max_iterations)
     J[0] = _gips_compute_J(x, window_starts, L_samp)
     
     # Randomly sample windows with replacement
