@@ -94,7 +94,7 @@ def rdratio(Ps, Ts):
         
     # Assure Ps and Ts are numpy arrays
     if type(Ps)==list or type(Ts)==list:
-        print 'Converted Ps and Ts to numpy arrays'
+        print('Converted Ps and Ts to numpy arrays')
         Ps = np.array(Ps)
         Ts = np.array(Ts)
         
@@ -146,7 +146,7 @@ def pt_duration(Ps, Ts, zeroxR, zeroxD):
         
     # Assure Ps and Ts are numpy arrays
     if type(Ps)==list or type(Ts)==list:
-        print 'Converted Ps and Ts to numpy arrays'
+        print('Converted Ps and Ts to numpy arrays')
         Ps = np.array(Ps)
         Ts = np.array(Ts)
         
@@ -503,7 +503,7 @@ def gips_swm(x, Fs, L, G,
     # Optimize X
     iter_num = 1
     while iter_num < max_iterations:
-        print iter_num
+        print(iter_num)
         
         # Pick a random window position
         window_idx_replace = random_window_idx[iter_num]
@@ -605,7 +605,7 @@ def rd_diff(Ps, Ts):
         
     # Assure Ps and Ts are numpy arrays
     if type(Ps)==list or type(Ts)==list:
-        print 'Converted Ps and Ts to numpy arrays'
+        print('Converted Ps and Ts to numpy arrays')
         Ps = np.array(Ps)
         Ts = np.array(Ts)
         
