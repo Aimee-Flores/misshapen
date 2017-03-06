@@ -108,6 +108,20 @@ def notch_default(x, cf, bw, Fs, order = 3):
     Wn = (f_range[0] / nyq_rate, f_range[1] / nyq_rate)
     b, a = sp.signal.butter(order, Wn, 'bandstop')
     return sp.signal.filtfilt(b, a, x)
+
+
+def highpass_default(x, Fs, cf, Ntaps):
+    nyq_rate = Fs / 2.
+    Wn = cf / nyq_rate
+    taps = sp.signal.firwin(Ntaps, Wn, pass_zero=False)
+    return np.convolve(taps,x,'same')
+
+
+def lowpass_default(x, Fs, cf, Ntaps):
+    nyq_rate = Fs / 2.
+    Wn = cf / nyq_rate
+    taps = sp.signal.firwin(Ntaps, Wn)
+    return np.convolve(taps,x,'same')
         
     
 def phaseT(x, frange, Fs, rmv_edge = False, filter_fn=None, filter_kwargs=None):
