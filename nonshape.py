@@ -1,6 +1,6 @@
 """
 Noteworthy util functions
-1. bandpass_default: default bandpass filter
+1. bandpass_default: default bandpass filter (similarly for notch, lowpass, and highpass)
 2. phaseT: calculate phase time series
 3. ampT: calculate amplitude time series
 4. findpt - find peaks and troughs of oscillations
