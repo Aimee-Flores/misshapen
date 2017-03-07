@@ -366,14 +366,25 @@ def findzerox(x, Ps, Ts):
     for i in range(N_rises):
         x_temp = np.copy(x[Ts[i]:Ps[i+1-idx_bias]+1])
         x_temp -= (x_temp[0]+x_temp[-1])/2.
-        zeroxR[i] = Ts[i] + int(np.median(_fzerorise(x_temp)))
+        try:
+            zeroxR[i] = Ts[i] + int(np.median(_fzerorise(x_temp)))
+        except:
+            print('WARNING: Error when estimating rising zerocrossing after trough '+str(i)+\
+                '. Therefore, the zerocrossing has been set to halfway between the two extrema.')
+            zeroxR[i] = Ts[i] + int(len(x_temp)/2.)
 
     # Find zerocrossings for decays
     zeroxD = np.zeros(N_decays, dtype=int)
     for i in range(N_decays):
         x_temp = np.copy(x[Ps[i]:Ts[i+idx_bias]+1])
         x_temp -= (x_temp[0]+x_temp[-1])/2.
-        zeroxD[i] = Ps[i] + int(np.median(_fzerofall(x_temp)))    
+        try:
+            zeroxD[i] = Ps[i] + int(np.median(_fzerofall(x_temp)))    
+        except:
+            print('WARNING: Error when estimating decaying zerocrossing after peak '+str(i)+\
+                '. Therefore, the zerocrossing has been set to halfway between the two extrema.')
+            zeroxD[i] = Ps[i] + int(len(x_temp)/2.)
+        
 
     return zeroxR, zeroxD
     
