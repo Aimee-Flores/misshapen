@@ -68,11 +68,11 @@ def bandpass_default(x, f_range, Fs, rmv_edge = True, w = 3, plot_frequency_resp
     
     # Default Ntaps as w if not provided
     if Ntaps is None:
-        Ntaps = np.ceil(Fs*w/f_range[0])
+        Ntaps = int(np.ceil(Fs*w/f_range[0]))
     
     # Force Ntaps to be odd
     if Ntaps % 2 == 0:
-        Ntaps = Ntaps + 1
+        Ntaps = int(Ntaps + 1)
     taps = sp.signal.firwin(Ntaps, np.array(f_range) / (Fs/2.), pass_zero=False)
     
     # Apply filter
@@ -370,6 +370,7 @@ def findzerox(x, Ps, Ts):
             zeroxR[i] = Ts[i] + int(np.median(_fzerorise(x_temp)))
         except:
             print('WARNING: Error when estimating rising zerocrossing after trough '+str(i)+\
+                ' at sample '+str(Ts[i])+\
                 '. Therefore, the zerocrossing has been set to halfway between the two extrema.')
             zeroxR[i] = Ts[i] + int(len(x_temp)/2.)
 
@@ -382,6 +383,7 @@ def findzerox(x, Ps, Ts):
             zeroxD[i] = Ps[i] + int(np.median(_fzerofall(x_temp)))    
         except:
             print('WARNING: Error when estimating decaying zerocrossing after peak '+str(i)+\
+                ' at sample '+str(Ps[i])+\
                 '. Therefore, the zerocrossing has been set to halfway between the two extrema.')
             zeroxD[i] = Ps[i] + int(len(x_temp)/2.)
         
