@@ -124,7 +124,7 @@ def lowpass_default(x, Fs, cf, Ntaps):
     return np.convolve(taps,x,'same')
         
     
-def phaseT(x, frange, Fs, rmv_edge = False, filter_fn=None, filter_kwargs=None):
+def phaseT(x, frange, Fs, rmv_edge = False, filter_fn=None, filter_kwargs=None, run_fasthilbert=False):
     """
     Calculate the phase and amplitude time series
 
@@ -140,23 +140,28 @@ def phaseT(x, frange, Fs, rmv_edge = False, filter_fn=None, filter_kwargs=None):
         The filtering function, `filterfn(x, f_range, filter_kwargs)`
     filter_kwargs : dict
         Keyword parameters to pass to `filterfn(.)`
+    run_fasthilbert : bool
+        If True, zeropad the filtered signal up to the next power of 2.
+        This is because sp.signal.hilbert does not work for some arbitrary lengths of signals
 
     Returns
     -------
     pha : array-like, 1d
         Time series of phase
     """
-    
+
     if filter_fn is None:
         filter_fn = bandpass_default
 
     if filter_kwargs is None:
         filter_kwargs = {}
 
-
     # Filter signal
     xn, taps = filter_fn(x, frange, Fs, rmv_edge=rmv_edge, **filter_kwargs)
-    pha = np.angle(sp.signal.hilbert(xn))
+    if run_fasthilbert:
+        pha = np.angle(fasthilbert(xn))
+    else:
+        pha = np.angle(sp.signal.hilbert(xn))
 
     return pha
     
@@ -177,6 +182,9 @@ def ampT(x, frange, Fs, rmv_edge = False, filter_fn=None, filter_kwargs=None, ru
         The filtering function, `filterfn(x, f_range, filter_kwargs)`
     filter_kwargs : dict
         Keyword parameters to pass to `filterfn(.)`
+    run_fasthilbert : bool
+        If True, zeropad the filtered signal up to the next power of 2.
+        This is because sp.signal.hilbert does not work for some arbitrary lengths of signals
 
     Returns
     -------
@@ -302,11 +310,11 @@ def findpt(x, f_range, Fs, boundary = None, forcestart = 'peak',
         mrzerofall = zerofallN[tr]
         nfzerorise = zeroriseN[zeroriseN > mrzerofall][0]
         Ts[tr] = np.argmin(x[mrzerofall:nfzerorise]) + mrzerofall
-        
+
     if boundary > 0:
         Ps = _removeboundaryextrema(x, Ps, boundary)
         Ts = _removeboundaryextrema(x, Ts, boundary)
-        
+
     # Assure equal # of peaks and troughs by starting with a peak and ending with a trough
     if forcestart == 'peak':
         if Ps[0] > Ts[0]:
