@@ -34,12 +34,12 @@ import scipy as sp
 import math
 from sklearn import linear_model
 import matplotlib.pyplot as plt
-    
-    
-def bandpass_default(x, f_range, Fs, rmv_edge = True, w = 3, plot_frequency_response = False, Ntaps = None):
+
+
+def bandpass_default(x, f_range, Fs, rmv_edge=True, w=3, plot_frequency_response=False, Ntaps=None):
     """
     Default bandpass filter
-    
+
     Parameters
     ----------
     x : array-like 1d
@@ -57,7 +57,7 @@ def bandpass_default(x, f_range, Fs, rmv_edge = True, w = 3, plot_frequency_resp
     Ntaps : int
         Length of filter; overrides 'w' parameter.
         MUST BE ODD. Or value is increased by 1.
-        
+
     Returns
     -------
     x_filt : array-like 1d
@@ -65,44 +65,45 @@ def bandpass_default(x, f_range, Fs, rmv_edge = True, w = 3, plot_frequency_resp
     taps : array-like 1d
         filter kernel
     """
-    
+
     # Default Ntaps as w if not provided
     if Ntaps is None:
-        Ntaps = int(np.ceil(Fs*w/f_range[0]))
-    
+        Ntaps = int(np.ceil(Fs * w / f_range[0]))
+
     # Force Ntaps to be odd
     if Ntaps % 2 == 0:
         Ntaps = int(Ntaps + 1)
-    taps = sp.signal.firwin(Ntaps, np.array(f_range) / (Fs/2.), pass_zero=False)
-    
+    taps = sp.signal.firwin(Ntaps, np.array(
+        f_range) / (Fs / 2.), pass_zero=False)
+
     # Apply filter
-    x_filt = np.convolve(taps,x,'same')
-    
+    x_filt = np.convolve(taps, x, 'same')
+
     # Plot frequency response
     if plot_frequency_response:
         w, h = signal.freqz(taps)
-        
+
         import matplotlib.pyplot as plt
-        plt.figure(figsize=(10,5))
-        plt.subplot(1,2,2)
+        plt.figure(figsize=(10, 5))
+        plt.subplot(1, 2, 2)
         plt.title('Kernel')
         plt.plot(taps)
-        
-        plt.subplot(1,2,1)
-        plt.plot(w*Fs/(2.*np.pi), 20 * np.log10(abs(h)), 'b')
+
+        plt.subplot(1, 2, 1)
+        plt.plot(w * Fs / (2. * np.pi), 20 * np.log10(abs(h)), 'b')
         plt.title('Frequency response')
         plt.ylabel('Attenuation (dB)', color='b')
         plt.xlabel('Frequency (Hz)')
 
     # Remove edge artifacts
-    N_rmv = int(Ntaps/2.)
+    N_rmv = int(Ntaps / 2.)
     if rmv_edge:
         return x_filt[N_rmv:-N_rmv], Ntaps
     else:
         return x_filt, taps
 
 
-def notch_default(x, cf, bw, Fs, order = 3):
+def notch_default(x, cf, bw, Fs, order=3):
     nyq_rate = Fs / 2.
     f_range = [cf - bw / 2., cf + bw / 2.]
     Wn = (f_range[0] / nyq_rate, f_range[1] / nyq_rate)
@@ -114,17 +115,17 @@ def highpass_default(x, Fs, cf, Ntaps):
     nyq_rate = Fs / 2.
     Wn = cf / nyq_rate
     taps = sp.signal.firwin(Ntaps, Wn, pass_zero=False)
-    return np.convolve(taps,x,'same')
+    return np.convolve(taps, x, 'same')
 
 
 def lowpass_default(x, Fs, cf, Ntaps):
     nyq_rate = Fs / 2.
     Wn = cf / nyq_rate
     taps = sp.signal.firwin(Ntaps, Wn)
-    return np.convolve(taps,x,'same')
-        
-    
-def phaseT(x, frange, Fs, rmv_edge = False, filter_fn=None, filter_kwargs=None, run_fasthilbert=False):
+    return np.convolve(taps, x, 'same')
+
+
+def phaseT(x, frange, Fs, rmv_edge=False, filter_fn=None, filter_kwargs=None, run_fasthilbert=False):
     """
     Calculate the phase and amplitude time series
 
@@ -164,9 +165,9 @@ def phaseT(x, frange, Fs, rmv_edge = False, filter_fn=None, filter_kwargs=None, 
         pha = np.angle(sp.signal.hilbert(xn))
 
     return pha
-    
-    
-def ampT(x, frange, Fs, rmv_edge = False, filter_fn=None, filter_kwargs=None, run_fasthilbert=False):
+
+
+def ampT(x, frange, Fs, rmv_edge=False, filter_fn=None, filter_kwargs=None, run_fasthilbert=False):
     """
     Calculate the amplitude time series
 
@@ -191,13 +192,12 @@ def ampT(x, frange, Fs, rmv_edge = False, filter_fn=None, filter_kwargs=None, ru
     amp : array-like, 1d
         Time series of phase
     """
-    
+
     if filter_fn is None:
         filter_fn = bandpass_default
 
     if filter_kwargs is None:
         filter_kwargs = {}
-
 
     # Filter signal
     xn, taps = filter_fn(x, frange, Fs, rmv_edge=rmv_edge, **filter_kwargs)
@@ -207,7 +207,7 @@ def ampT(x, frange, Fs, rmv_edge = False, filter_fn=None, filter_kwargs=None, ru
         amp = np.abs(sp.signal.hilbert(xn))
 
     return amp
-    
+
 
 def fasthilbert(x, axis=-1):
     """
@@ -232,20 +232,21 @@ def _fzerofall(data):
     pos = data > 0
     return (pos[:-1] & ~pos[1:]).nonzero()[0]
 
+
 def _fzerorise(data):
     """Find zerocrossings on rising edge"""
     pos = data < 0
     return (pos[:-1] & ~pos[1:]).nonzero()[0]
 
 
-def findpt(x, f_range, Fs, boundary = None, forcestart = 'peak',
-            filter_fn = bandpass_default, filter_kwargs = {}):
+def findpt(x, f_range, Fs, boundary=None, forcestart='peak',
+           filter_fn=bandpass_default, filter_kwargs={}):
     """
     Calculate peaks and troughs over time series
-    
+
     NOTE:
         This function assures that there are the same number of peaks and troughs
-    
+
     Parameters
     ----------
     x : array-like 1d
@@ -277,7 +278,7 @@ def findpt(x, f_range, Fs, boundary = None, forcestart = 'peak',
 
     # Default boundary value as 1 cycle length
     if boundary is None:
-        boundary = int(np.ceil(Fs/float(f_range[0])))
+        boundary = int(np.ceil(Fs / float(f_range[0])))
 
     # Filter signal
     xn, taps = filter_fn(x, f_range, Fs, rmv_edge=False, **filter_kwargs)
@@ -315,7 +316,8 @@ def findpt(x, f_range, Fs, boundary = None, forcestart = 'peak',
         Ps = _removeboundaryextrema(x, Ps, boundary)
         Ts = _removeboundaryextrema(x, Ts, boundary)
 
-    # Assure equal # of peaks and troughs by starting with a peak and ending with a trough
+    # Assure equal # of peaks and troughs by starting with a peak and ending
+    # with a trough
     if forcestart == 'peak':
         if Ps[0] > Ts[0]:
             Ts = Ts[1:]
@@ -330,7 +332,7 @@ def findpt(x, f_range, Fs, boundary = None, forcestart = 'peak',
         pass
     else:
         raise ValueError('Parameter forcestart is invalid')
-        
+
     return Ps, Ts
 
 
@@ -341,7 +343,7 @@ def findzerox(x, Ps, Ts):
     midway between the trough voltage and subsequent peak voltage.
     A decay zerocrossing is defined similarly.
     If this voltage is crossed at multiple times, the temporal median is taken.
-    
+
     Parameters
     ----------
     x : array-like 1d
@@ -368,42 +370,41 @@ def findzerox(x, Ps, Ts):
         N_rises = len(Ps)
         N_decays = len(Ts) - 1
         idx_bias = 1
-    
+
     # Find zerocrossings for rise
     zeroxR = np.zeros(N_rises, dtype=int)
     for i in range(N_rises):
-        x_temp = np.copy(x[Ts[i]:Ps[i+1-idx_bias]+1])
-        x_temp -= (x_temp[0]+x_temp[-1])/2.
+        x_temp = np.copy(x[Ts[i]:Ps[i + 1 - idx_bias] + 1])
+        x_temp -= (x_temp[0] + x_temp[-1]) / 2.
         try:
             zeroxR[i] = Ts[i] + int(np.median(_fzerorise(x_temp)))
         except:
-            print('WARNING: Error when estimating rising zerocrossing after trough '+str(i)+\
-                ' at sample '+str(Ts[i])+\
-                '. Therefore, the zerocrossing has been set to halfway between the two extrema.')
-            zeroxR[i] = Ts[i] + int(len(x_temp)/2.)
+            print('WARNING: Error when estimating rising zerocrossing after trough ' + str(i) +
+                  ' at sample ' + str(Ts[i]) +
+                  '. Therefore, the zerocrossing has been set to halfway between the two extrema.')
+            zeroxR[i] = Ts[i] + int(len(x_temp) / 2.)
 
     # Find zerocrossings for decays
     zeroxD = np.zeros(N_decays, dtype=int)
     for i in range(N_decays):
-        x_temp = np.copy(x[Ps[i]:Ts[i+idx_bias]+1])
-        x_temp -= (x_temp[0]+x_temp[-1])/2.
+        x_temp = np.copy(x[Ps[i]:Ts[i + idx_bias] + 1])
+        x_temp -= (x_temp[0] + x_temp[-1]) / 2.
         try:
-            zeroxD[i] = Ps[i] + int(np.median(_fzerofall(x_temp)))    
+            zeroxD[i] = Ps[i] + int(np.median(_fzerofall(x_temp)))
         except:
-            print('WARNING: Error when estimating decaying zerocrossing after peak '+str(i)+\
-                ' at sample '+str(Ps[i])+\
-                '. Therefore, the zerocrossing has been set to halfway between the two extrema.')
-            zeroxD[i] = Ps[i] + int(len(x_temp)/2.)
-        
+            print('WARNING: Error when estimating decaying zerocrossing after peak ' + str(i) +
+                  ' at sample ' + str(Ps[i]) +
+                  '. Therefore, the zerocrossing has been set to halfway between the two extrema.')
+            zeroxD[i] = Ps[i] + int(len(x_temp) / 2.)
 
     return zeroxR, zeroxD
-    
-    
+
+
 def f_psd(x, Fs, method,
-        Hzmed=0, welch_params={'window':'hanning','nperseg':1000,'noverlap':None}):
+          Hzmed=0, welch_params={'window': 'hanning', 'nperseg': 1000, 'noverlap': None}):
     '''
     Calculate the power spectrum of a signal
-    
+
     Parameters
     ----------
     x : array
@@ -418,7 +419,7 @@ def f_psd(x, Fs, method,
     welch_params : dict
         relevant if method == 'welch'
         Parameters to sp.signal.welch
-        
+
     Returns
     -------
     f : array
@@ -426,34 +427,34 @@ def f_psd(x, Fs, method,
     psd : array
         power spectrum
     '''
-    
+
     if method == 'fftmed':
         # Calculate frequencies
         N = len(x)
-        f = np.arange(0,Fs/2,Fs/N)
-        
+        f = np.arange(0, Fs / 2, Fs / N)
+
         # Calculate PSD
         rawfft = np.fft.fft(x)
         psd = np.abs(rawfft[:len(f)])**2
-    
+
         # Median filter
         if Hzmed > 0:
-            sampmed = np.argmin(np.abs(f-Hzmed/2.0))
-            psd = signal.medfilt(psd,sampmed*2+1)
-            
+            sampmed = np.argmin(np.abs(f - Hzmed / 2.0))
+            psd = signal.medfilt(psd, sampmed * 2 + 1)
+
     elif method == 'welch':
         f, psd = sp.signal.welch(x, fs=Fs, **welch_params)
-        
+
     else:
         raise ValueError('input for PSD method not recognized')
-    
+
     return f, psd
-    
-    
+
+
 def _removeboundaryextrema(x, Es, boundaryS):
     """
     Remove extrema close to the boundary of the recording
-    
+
     Parameters
     ----------
     x : array-like 1d
@@ -462,52 +463,52 @@ def _removeboundaryextrema(x, Es, boundaryS):
         time points of oscillatory peaks or troughs
     boundaryS : int
         Number of samples around the boundary to reject extrema
-        
+
     Returns
     -------
     newEs : array-like 1d
         extremas that are not too close to boundary
-    
+
     """
-    
+
     # Calculate number of samples
     nS = len(x)
-    
+
     # Reject extrema too close to boundary
-    SampLims = (boundaryS, nS-boundaryS)
+    SampLims = (boundaryS, nS - boundaryS)
     E = len(Es)
     todelete = []
     for e in range(E):
-        if np.logical_or(Es[e]<SampLims[0],Es[e]>SampLims[1]):
-            todelete = np.append(todelete,e)
-            
-    newEs = np.delete(Es,todelete)
-    
+        if np.logical_or(Es[e] < SampLims[0], Es[e] > SampLims[1]):
+            todelete = np.append(todelete, e)
+
+    newEs = np.delete(Es, todelete)
+
     return newEs
 
 
 def inter_peak_interval(Ps):
     """
     Find the distribution of the period durations of neural oscillations as in Hentsche EJN 2007 Fig2
-    
+
     Parameters
     ----------
     Ps : array-like 1d
         Arrays of extrema time points
-        
+
     Returns
     -------
     periods : array-like 1d
         series of intervals between peaks
     """
-    
-    return np.diff(Ps)
-    
 
-def estimate_period(x, f_range, Fs, returnPsTs = False):
+    return np.diff(Ps)
+
+
+def estimate_period(x, f_range, Fs, returnPsTs=False):
     """
     Estimate the length of the period (in samples) of an oscillatory process in signal x in the range f_range
-    
+
     Parameters
     ----------
     x : array-like 1d
@@ -525,17 +526,17 @@ def estimate_period(x, f_range, Fs, returnPsTs = False):
     period : int
         Estimate of period in samples
     """
-    
+
     # Calculate peaks and troughs
-    boundary = int(np.ceil(Fs/float(2*f_range[0])))
-    Ps, Ts = findpt(x, f_range, Fs, boundary = boundary)
-    
+    boundary = int(np.ceil(Fs / float(2 * f_range[0])))
+    Ps, Ts = findpt(x, f_range, Fs, boundary=boundary)
+
     # Calculate period
     if len(Ps) >= len(Ts):
-        period = (Ps[-1] - Ps[0])/(len(Ps)-1)
+        period = (Ps[-1] - Ps[0]) / (len(Ps) - 1)
     else:
-        period = (Ts[-1] - Ts[0])/(len(Ts)-1)
-        
+        period = (Ts[-1] - Ts[0]) / (len(Ts) - 1)
+
     if returnPsTs:
         return period, Ps, Ts
     else:
@@ -545,29 +546,29 @@ def estimate_period(x, f_range, Fs, returnPsTs = False):
 def peak_voltage(x, Ps):
     """
     Calculate the distribution of voltage of the extrema as in Hentsche EJN 2007 Fig2
-    
+
     Note that this function only returns data while the signal was identified to be in an oscillation,
     using the default oscillation detector
-    
+
     Parameters
     ----------
     x : array-like 1d
         voltage time series
     Ps : array-like 1d
         Arrays of extrema time points
-        
+
     Returns
     -------
     peak_voltages : array-like 1d
         distribution of the peak voltage values
     """
     return x[Ps]
-    
-    
+
+
 def bandpow(x, Fs, flim):
     '''
     Calculate the power in a frequency range
-    
+
     Parameters
     ----------
     x : array-like 1d
@@ -576,28 +577,28 @@ def bandpow(x, Fs, flim):
         sampling rate
     flim : (lo, hi)
         limits of frequency range
-        
+
     Returns
     -------
     pow : float
         power in the range
     '''
-    
+
     # Calculate PSD
     N = len(x)
-    f = np.arange(0,Fs/2,Fs/N)
+    f = np.arange(0, Fs / 2, Fs / N)
     rawfft = np.fft.fft(x)
     psd = np.abs(rawfft[:len(f)])**2
-    
+
     # Calculate power
-    fidx = np.logical_and(f>=flim[0],f<=flim[1])
-    return np.sum(psd[fidx])/np.float(len(f)*2)
-    
-    
+    fidx = np.logical_and(f >= flim[0], f <= flim[1])
+    return np.sum(psd[fidx]) / np.float(len(f) * 2)
+
+
 def amplitude_variance(x, Fs, flim):
     '''
     Calculate the variance in the oscillation amplitude
-    
+
     Parameters
     ----------
     x : array-like 1d
@@ -606,24 +607,24 @@ def amplitude_variance(x, Fs, flim):
         sampling rate
     flim : (lo, hi)
         limits of frequency range
-        
+
     Returns
     -------
     pow : float
         power in the range
     '''
-    
+
     # Calculate amplitude
     amp = ampT(x, flim, Fs)
     return np.var(amp)
-    
-    
+
+
 def frequency_variance(x, Fs, flim):
     '''
     Calculate the variance in the instantaneous frequency
-    
+
     NOTE: This function assumes monotonic phase, so a phase slip will be processed as a very high frequency
-    
+
     Parameters
     ----------
     x : array-like 1d
@@ -632,28 +633,28 @@ def frequency_variance(x, Fs, flim):
         sampling rate
     flim : (lo, hi)
         limits of frequency range
-        
+
     Returns
     -------
     pow : float
         power in the range
     '''
-    
+
     # Calculate amplitude
     pha = phaseT(x, flim, Fs)
     phadiff = np.diff(pha)
-    phadiff[phadiff<0] = phadiff[phadiff<0]+2*np.pi
-    inst_freq = Fs*phadiff/(2*np.pi)
+    phadiff[phadiff < 0] = phadiff[phadiff < 0] + 2 * np.pi
+    inst_freq = Fs * phadiff / (2 * np.pi)
     return np.var(inst_freq)
-    
-    
+
+
 def lagged_coherence(x, frange, Fs, N_cycles=3, f_step=1, return_spectrum=False):
     """
     Quantify the rhythmicity of a time series using lagged coherence.
     Return the mean lagged coherence in the frequency range as an
     estimate of rhythmicity.
     As in Fransen et al. 2015
-    
+
     Parameters
     ----------
     x : array-like 1d
@@ -674,67 +675,69 @@ def lagged_coherence(x, frange, Fs, N_cycles=3, f_step=1, return_spectrum=False)
         method for estimating phase.
         fourier: calculate fourier coefficients for each time window. hanning tpaer.
         wavelet: multiply each window by a N-cycle wavelet
-        
+
     Returns
     -------
     rhythmicity : float
         mean lagged coherence value in the frequency range of interest
     """
     # Identify Fourier components of interest
-    freqs = np.arange(frange[0],frange[1]+f_step,f_step)
-    
+    freqs = np.arange(frange[0], frange[1] + f_step, f_step)
+
     # Calculate lagged coherence for each frequency
     F = len(freqs)
     lcs = np.zeros(F)
-    for i,f in enumerate(freqs):
-        lcs[i] = _lagged_coherence_1freq(x, f, Fs, N_cycles=N_cycles, f_step=f_step)
-        
+    for i, f in enumerate(freqs):
+        lcs[i] = _lagged_coherence_1freq(
+            x, f, Fs, N_cycles=N_cycles, f_step=f_step)
+
     if return_spectrum:
         return lcs
     else:
         return np.mean(lcs)
-    
-    
+
+
 def _lagged_coherence_1freq(x, f, Fs, N_cycles=3, f_step=1):
     """Calculate lagged coherence of x at frequency f using the hanning-taper FFT method"""
-    Nsamp = int(np.ceil(N_cycles*Fs / f))
+    Nsamp = int(np.ceil(N_cycles * Fs / f))
     # For each N-cycle chunk, calculate phase
-    chunks = _nonoverlapping_chunks(x,Nsamp)
+    chunks = _nonoverlapping_chunks(x, Nsamp)
     C = len(chunks)
     hann_window = signal.hanning(Nsamp)
-    fourier_f = np.fft.fftfreq(Nsamp,1/float(Fs))
-    fourier_f_idx = _arg_closest_value(fourier_f,f)
-    fourier_coefsoi = np.zeros(C,dtype=complex)
+    fourier_f = np.fft.fftfreq(Nsamp, 1 / float(Fs))
+    fourier_f_idx = _arg_closest_value(fourier_f, f)
+    fourier_coefsoi = np.zeros(C, dtype=complex)
     for i2, c in enumerate(chunks):
-        fourier_coef = np.fft.fft(c*hann_window)
-        
+        fourier_coef = np.fft.fft(c * hann_window)
+
         fourier_coefsoi[i2] = fourier_coef[fourier_f_idx]
 
     lcs_num = 0
-    for i2 in range(C-1):
-        lcs_num += fourier_coefsoi[i2]*np.conj(fourier_coefsoi[i2+1])
-    lcs_denom = np.sqrt(np.sum(np.abs(fourier_coefsoi[:-1])**2)*np.sum(np.abs(fourier_coefsoi[1:])**2))
-    return np.abs(lcs_num/lcs_denom)
-    
+    for i2 in range(C - 1):
+        lcs_num += fourier_coefsoi[i2] * np.conj(fourier_coefsoi[i2 + 1])
+    lcs_denom = np.sqrt(np.sum(
+        np.abs(fourier_coefsoi[:-1])**2) * np.sum(np.abs(fourier_coefsoi[1:])**2))
+    return np.abs(lcs_num / lcs_denom)
+
 
 def _nonoverlapping_chunks(x, N):
     """Split x into nonoverlapping chunks of length N"""
-    Nchunks = int(np.floor(len(x)/float(N)))
-    chunks = np.reshape(x[:int(Nchunks*N)],(Nchunks,int(N)))
+    Nchunks = int(np.floor(len(x) / float(N)))
+    chunks = np.reshape(x[:int(Nchunks * N)], (Nchunks, int(N)))
     return chunks
-    
+
 
 def _arg_closest_value(x, val):
     """Find the index of closest value in x to val"""
-    return np.argmin(np.abs(x-val))
-    
-    
+    return np.argmin(np.abs(x - val))
+
+
 def oscdetect_ampth(x, f_range, Fs, thresh_hi, thresh_lo,
-                    min_osc_periods = 3, filter_fn = bandpass_default, filter_kwargs = {}, return_amp=False):
+                    min_osc_periods=3, filter_fn=bandpass_default, filter_kwargs={}, return_amp=False):
     """
     Detect the time range of oscillations in a certain frequency band.
     * METHOD: Set 2 VOLTAGE thresholds.
-    
+
     Parameters
     ----------
     x : array-like 1d
@@ -757,7 +760,7 @@ def oscdetect_ampth(x, f_range, Fs, thresh_hi, thresh_lo,
         function to use to filter original time series, x
     filter_kwargs : dict
         keyword arguments to the filter_fn
-        
+
     Returns
     -------
     isosc : array-like 1d
@@ -765,41 +768,44 @@ def oscdetect_ampth(x, f_range, Fs, thresh_hi, thresh_lo,
     taps : array-like 1d
         filter kernel
     """
-    
+
     # Filter signal
     x_filt, taps = filter_fn(x, f_range, Fs, rmv_edge=False, **filter_kwargs)
-    
+
     # Quantify magnitude of the signal
     x_amplitude = np.abs(sp.signal.hilbert(x_filt))
 
     # Identify time periods of oscillation
     isosc = _2threshold_split(x_amplitude, thresh_hi, thresh_lo)
-    
+
     # Remove short time periods of oscillation
-    min_period_length = int(np.ceil(min_osc_periods*Fs/f_range[0]))
+    min_period_length = int(np.ceil(min_osc_periods * Fs / f_range[0]))
     isosc_noshort = _rmv_short_periods(isosc, min_period_length)
-    
+
     if return_amp:
         return isosc_noshort, taps, x_amplitude
     else:
         return isosc_noshort, taps
-    
-        
+
+
 def _2threshold_split(x, thresh_hi, thresh_lo):
     """Identify periods of a time series that are above thresh_lo and have at least one value above thresh_hi"""
-    
+
     # Find all values above thresh_hi
-    x[[0,-1]] = 0 # To avoid bug in later loop, do not allow first or last index to start off as 1
+    # To avoid bug in later loop, do not allow first or last index to start
+    # off as 1
+    x[[0, -1]] = 0
     idx_over_hi = np.where(x >= thresh_hi)[0]
 
     # Initialize values in identified period
     positive = np.zeros(len(x))
     positive[idx_over_hi] = 1
-    
-    # Iteratively test if a value is above thresh_lo if it is not currently in an identified period
+
+    # Iteratively test if a value is above thresh_lo if it is not currently in
+    # an identified period
     lenx = len(x)
     for i in idx_over_hi:
-        j_down = i-1
+        j_down = i - 1
         if positive[j_down] == 0:
             j_down_done = False
             while j_down_done is False:
@@ -810,8 +816,8 @@ def _2threshold_split(x, thresh_hi, thresh_lo):
                         j_down_done = True
                 else:
                     j_down_done = True
-                    
-        j_up = i+1
+
+        j_up = i + 1
         if positive[j_up] == 0:
             j_up_done = False
             while j_up_done is False:
@@ -822,23 +828,23 @@ def _2threshold_split(x, thresh_hi, thresh_lo):
                         j_up_done = True
                 else:
                     j_up_done = True
-    
+
     return positive
 
 
 def _rmv_short_periods(x, N):
     """Remove periods that ==1 for less than N samples"""
-    
-    if np.sum(x)==0:
-        return x
-        
-    osc_changes = np.diff(1*x)
-    osc_starts = np.where(osc_changes==1)[0]
-    osc_ends = np.where(osc_changes==-1)[0]
 
-    if len(osc_starts)==0:
+    if np.sum(x) == 0:
+        return x
+
+    osc_changes = np.diff(1 * x)
+    osc_starts = np.where(osc_changes == 1)[0]
+    osc_ends = np.where(osc_changes == -1)[0]
+
+    if len(osc_starts) == 0:
         osc_starts = [0]
-    if len(osc_ends)==0:
+    if len(osc_ends) == 0:
         osc_ends = [len(osc_changes)]
 
     if osc_ends[0] < osc_starts[0]:
@@ -847,21 +853,21 @@ def _rmv_short_periods(x, N):
         osc_ends = np.append(osc_ends, len(osc_changes))
 
     osc_length = osc_ends - osc_starts
-    osc_starts_long = osc_starts[osc_length>=N]
-    osc_ends_long = osc_ends[osc_length>=N]
+    osc_starts_long = osc_starts[osc_length >= N]
+    osc_ends_long = osc_ends[osc_length >= N]
 
     is_osc = np.zeros(len(x))
     for osc in range(len(osc_starts_long)):
         is_osc[osc_starts_long[osc]:osc_ends_long[osc]] = 1
     return is_osc
-    
-    
-def oscdetect_thresh(x, f_range, Fs, thresh_hi = 3, thresh_lo = 1.5, magnitude = 'power', baseline = 'median',
-                    min_osc_periods = 3, filter_fn = bandpass_default, filter_kwargs = {}, return_normmag=False):
+
+
+def oscdetect_thresh(x, f_range, Fs, thresh_hi=3, thresh_lo=1.5, magnitude='power', baseline='median',
+                     min_osc_periods=3, filter_fn=bandpass_default, filter_kwargs={}, return_normmag=False):
     """
     Detect the time range of oscillations in a certain frequency band.
     Based on Feingold 2015 PNAS Fig. 4
-    
+
     Parameters
     ----------
     x : array-like 1d
@@ -884,7 +890,7 @@ def oscdetect_thresh(x, f_range, Fs, thresh_hi = 3, thresh_lo = 1.5, magnitude =
         function to use to filter original time series, x
     filter_kwargs : dict
         keyword arguments to the filter_fn
-        
+
     Returns
     -------
     isosc : array-like 1d
@@ -892,21 +898,21 @@ def oscdetect_thresh(x, f_range, Fs, thresh_hi = 3, thresh_lo = 1.5, magnitude =
     taps : array-like 1d
         filter kernel
     """
-    
+
     # Filter signal
     x_filt, taps = filter_fn(x, f_range, Fs, rmv_edge=False, **filter_kwargs)
-    
+
     # Quantify magnitude of the signal
-    ## Calculate amplitude
+    # Calculate amplitude
     x_amplitude = np.abs(sp.signal.hilbert(x_filt))
-    ## Set magnitude as power or amplitude
+    # Set magnitude as power or amplitude
     if magnitude == 'power':
         x_magnitude = x_amplitude**2
     elif magnitude == 'amplitude':
         x_magnitude = x_amplitude
     else:
         raise ValueError("Invalid 'magnitude' parameter")
-        
+
     # Calculate normalized magnitude
     if baseline == 'median':
         norm_mag = x_magnitude / np.median(x_magnitude)
@@ -917,23 +923,23 @@ def oscdetect_thresh(x, f_range, Fs, thresh_hi = 3, thresh_lo = 1.5, magnitude =
 
     # Identify time periods of oscillation
     isosc = _2threshold_split(norm_mag, thresh_hi, thresh_lo)
-    
+
     # Remove short time periods of oscillation
-    min_period_length = int(np.ceil(min_osc_periods*Fs/f_range[0]))
+    min_period_length = int(np.ceil(min_osc_periods * Fs / f_range[0]))
     isosc_noshort = _rmv_short_periods(isosc, min_period_length)
-    
+
     if return_normmag:
         return isosc_noshort, taps, norm_mag
     else:
         return isosc_noshort, taps
-    
 
-def oscdetect_magnorm(x, f_range, Fs, thresh_hi = .3, thresh_lo = .1, magnitude = 'power', thresh_bandpow_pc = 20,
-                     min_osc_periods = 3, filter_fn = bandpass_default, filter_kwargs = {'w':7}):
+
+def oscdetect_magnorm(x, f_range, Fs, thresh_hi=.3, thresh_lo=.1, magnitude='power', thresh_bandpow_pc=20,
+                      min_osc_periods=3, filter_fn=bandpass_default, filter_kwargs={'w': 7}):
     """
     Detect the time range of oscillations in a certain frequency band.
     Based on Feingold 2015 PNAS Fig. 4 except normalize the magnitude measure by the overall power or amplitude
-    
+
     Parameters
     ----------
     x : array-like 1d
@@ -956,7 +962,7 @@ def oscdetect_magnorm(x, f_range, Fs, thresh_hi = .3, thresh_lo = .1, magnitude 
         function to use to filter original time series, x
     filter_kwargs : dict
         keyword arguments to the filter_fn
-        
+
     Returns
     -------
     isosc : array-like 1d
@@ -964,90 +970,100 @@ def oscdetect_magnorm(x, f_range, Fs, thresh_hi = .3, thresh_lo = .1, magnitude 
     taps : array-like 1d
         filter kernel
     """
-    
+
     # Filter signal
     x_filt, taps = filter_fn(x, f_range, Fs, rmv_edge=False, **filter_kwargs)
-    
+
     # Quantify magnitude of the signal
-    ## Calculate amplitude
+    # Calculate amplitude
     x_amplitude = np.abs(sp.signal.hilbert(x_filt))
-    ## Calculate overall signal amplitude
-    ## NOTE: I'm pretty sure this is right, not 100% sure
-    taps_env = np.abs(sp.signal.hilbert(taps)) # This is the amplitude of the filter
-    x_overallamplitude = np.abs(np.convolve(np.abs(x), taps_env, mode='same')) # The amplitude at a point in time is a measure of the neural activity with a decaying weight over time like that of the amplitude of the filter
-    ## Set magnitude as power or amplitude
+    # Calculate overall signal amplitude
+    # NOTE: I'm pretty sure this is right, not 100% sure
+    # This is the amplitude of the filter
+    taps_env = np.abs(sp.signal.hilbert(taps))
+    # The amplitude at a point in time is a measure of the neural activity
+    # with a decaying weight over time like that of the amplitude of the
+    # filter
+    x_overallamplitude = np.abs(np.convolve(np.abs(x), taps_env, mode='same'))
+    # Set magnitude as power or amplitude
     if magnitude == 'power':
-        frac_magnitude = (x_amplitude/x_overallamplitude)**2
+        frac_magnitude = (x_amplitude / x_overallamplitude)**2
     elif magnitude == 'amplitude':
-        frac_magnitude = (x_amplitude/x_overallamplitude)
+        frac_magnitude = (x_amplitude / x_overallamplitude)
     else:
         raise ValueError("Invalid 'magnitude' parameter")
-        
+
     # Identify time periods of oscillation
-    isosc = _2threshold_split_magnorm(frac_magnitude, thresh_hi, thresh_lo, x_amplitude, thresh_bandpow_pc)
-    
+    isosc = _2threshold_split_magnorm(
+        frac_magnitude, thresh_hi, thresh_lo, x_amplitude, thresh_bandpow_pc)
+
     # Remove short time periods of oscillation
-    min_period_length = int(np.ceil(min_osc_periods*Fs/f_range[0]))
+    min_period_length = int(np.ceil(min_osc_periods * Fs / f_range[0]))
     isosc_noshort = _rmv_short_periods(isosc, min_period_length)
-    
+
     return isosc_noshort, taps
 
-    
+
 def _2threshold_split_magnorm(frac_mag, thresh_hi, thresh_lo, band_mag, thresh_bandpow_pc):
     """Identify periods of a time series that are above thresh_lo and have at least one value above thresh_hi.
         There is the additional requirement that the band magnitude must be above a chosen percentile threshold."""
-    
+
     # Find all values above thresh_hi
-    frac_mag[[0,-1]] = 0 # To avoid bug in later loop, do not allow first or last index to start off as 1
-    bandmagpc = np.percentile(band_mag,thresh_bandpow_pc)
-    idx_over_hi = np.where(np.logical_and(frac_mag >= thresh_hi, band_mag >= bandmagpc))[0]
+    # To avoid bug in later loop, do not allow first or last index to start
+    # off as 1
+    frac_mag[[0, -1]] = 0
+    bandmagpc = np.percentile(band_mag, thresh_bandpow_pc)
+    idx_over_hi = np.where(np.logical_and(
+        frac_mag >= thresh_hi, band_mag >= bandmagpc))[0]
     if len(idx_over_hi) == 0:
-        raise ValueError('No oscillatory periods found. Change thresh_hi or bandmagpc parameters.')
+        raise ValueError(
+            'No oscillatory periods found. Change thresh_hi or bandmagpc parameters.')
 
     # Initialize values in identified period
     positive = np.zeros(len(frac_mag))
     positive[idx_over_hi] = 1
-    
-    # Iteratively test if a value is above thresh_lo if it is not currently in an identified period
+
+    # Iteratively test if a value is above thresh_lo if it is not currently in
+    # an identified period
     lenx = len(frac_mag)
     for i in idx_over_hi:
-        j_down = i-1
+        j_down = i - 1
         if positive[j_down] == 0:
             j_down_done = False
             while j_down_done is False:
-                if np.logical_and(frac_mag[j_down] >= thresh_lo,band_mag[j_down] >= bandmagpc):
+                if np.logical_and(frac_mag[j_down] >= thresh_lo, band_mag[j_down] >= bandmagpc):
                     positive[j_down] = 1
                     j_down -= 1
                     if j_down < 0:
                         j_down_done = True
                 else:
                     j_down_done = True
-                    
-        j_up = i+1
+
+        j_up = i + 1
         if positive[j_up] == 0:
             j_up_done = False
             while j_up_done is False:
-                if np.logical_and(frac_mag[j_up] >= thresh_lo,band_mag[j_up] >= bandmagpc):
+                if np.logical_and(frac_mag[j_up] >= thresh_lo, band_mag[j_up] >= bandmagpc):
                     positive[j_up] = 1
                     j_up += 1
                     if j_up >= lenx:
                         j_up_done = True
                 else:
                     j_up_done = True
-    
+
     return positive
 
 
 def oscdetect_whitten(x, f_range, Fs, f_slope,
-                      window_size_slope = 1000, window_size_spec = 1000,
-                      filter_fn = bandpass_default, filter_kwargs = {},
-                      return_powerts=False, percentile_thresh = .95,
-                      plot_spectral_slope_fit = False, plot_powerts = False,
-                      return_oscbounds = False):
+                      window_size_slope=1000, window_size_spec=1000,
+                      filter_fn=bandpass_default, filter_kwargs={},
+                      return_powerts=False, percentile_thresh=.95,
+                      plot_spectral_slope_fit=False, plot_powerts=False,
+                      return_oscbounds=False):
     """
     Detect the time range of oscillations in a certain frequency band.
     Based on Whitten et al. 2011
-    
+
     Parameters
     ----------
     x : array-like 1d
@@ -1076,66 +1092,71 @@ def oscdetect_whitten(x, f_range, Fs, f_slope,
         if True, plot the power time series and original time series for the first 5000 samples
     return_oscbounds : bool
         if True, isntead of returning a boolean time series as the
-        
-        
+
+
     Returns
     -------
     isosc : array-like 1d
         binary time series. 1 = in oscillation; 0 = not in oscillation
         if return_oscbounds is true: this is 2 lists with the start and end burst samples
     """
-    
+
     # Calculate power spectrum to find baseline power
-    welch_params={'window':'hanning','nperseg':window_size_slope,'noverlap':None}
+    welch_params = {'window': 'hanning',
+                    'nperseg': window_size_slope, 'noverlap': None}
     f, psd = f_psd(x, Fs, 'welch', welch_params=welch_params)
 
     # Calculate slope around frequency band
-    f_sampleslope = f[np.logical_or(np.logical_and(f>=f_slope[0][0],f<=f_slope[0][1]),
-                                   np.logical_and(f>=f_slope[1][0],f<=f_slope[1][1]))]
-    slope_val, fit_logf, fit_logpower = spectral_slope(f, psd, f_sampleslope = f_sampleslope)
-    
+    f_sampleslope = f[np.logical_or(np.logical_and(f >= f_slope[0][0], f <= f_slope[0][1]),
+                                    np.logical_and(f >= f_slope[1][0], f <= f_slope[1][1]))]
+    slope_val, fit_logf, fit_logpower = spectral_slope(
+        f, psd, f_sampleslope=f_sampleslope)
+
     # Confirm slope fit is reasonable
     if plot_spectral_slope_fit:
-        plt.figure(figsize=(6,3))
-        plt.loglog(f,psd,'k-')
-        plt.loglog(10**fit_logf, 10**fit_logpower,'r--')
+        plt.figure(figsize=(6, 3))
+        plt.loglog(f, psd, 'k-')
+        plt.loglog(10**fit_logf, 10**fit_logpower, 'r--')
         plt.xlabel('Frequency (Hz)')
         plt.ylabel('Power (uV^2/Hz)')
-        
+
     # Intepolate 1/f over the oscillation period
     fn_interp = sp.interpolate.interp1d(fit_logf, fit_logpower)
-    f_osc_log = np.log10(np.arange(f_range[0],f_range[1]+1))
+    f_osc_log = np.log10(np.arange(f_range[0], f_range[1] + 1))
     p_interp_log = fn_interp(f_osc_log)
-    
+
     # Calculate power threshold
     meanpower = 10**p_interp_log
-    powthresh = np.mean(sp.stats.chi2.ppf(percentile_thresh,2)*meanpower/2.)
-    
+    powthresh = np.mean(sp.stats.chi2.ppf(
+        percentile_thresh, 2) * meanpower / 2.)
+
     # Calculate spectrogram and power time series
-    # Note that these spectral statistics are calculated using the 'psd' mode common to both 'spectrogram' and 'welch' in scipy.signal
-    f, t_spec, x_spec_pre = sp.signal.spectrogram(x, fs=Fs, window='hanning', nperseg=window_size_spec, noverlap=window_size_spec-1, mode='psd')
-    
+    # Note that these spectral statistics are calculated using the 'psd' mode
+    # common to both 'spectrogram' and 'welch' in scipy.signal
+    f, t_spec, x_spec_pre = sp.signal.spectrogram(
+        x, fs=Fs, window='hanning', nperseg=window_size_spec, noverlap=window_size_spec - 1, mode='psd')
+
     # pad spectrogram with 0s to match the original time series
-    t = np.arange(0,len(x)/float(Fs),1/float(Fs))
-    x_spec = np.zeros((len(f),len(t)))
-    tidx_start = np.where(np.abs(t-t_spec[0])<1/float(10*Fs))[0][0]
-    x_spec[:,tidx_start:tidx_start+len(t_spec)]=x_spec_pre
-    
+    t = np.arange(0, len(x) / float(Fs), 1 / float(Fs))
+    x_spec = np.zeros((len(f), len(t)))
+    tidx_start = np.where(np.abs(t - t_spec[0]) < 1 / float(10 * Fs))[0][0]
+    x_spec[:, tidx_start:tidx_start + len(t_spec)] = x_spec_pre
+
     # Calculate instantaneous power
-    fidx_band = np.where(np.logical_and(f>=f_range[0],f<=f_range[1]))[0]
-    x_bandpow = np.mean(x_spec[fidx_band],axis=0)
-    
+    fidx_band = np.where(np.logical_and(f >= f_range[0], f <= f_range[1]))[0]
+    x_bandpow = np.mean(x_spec[fidx_band], axis=0)
+
     # Visualize bandpower time series
     if plot_powerts:
-        tmax = np.min((len(x_bandpow),5000))
-        samp_plt=range(0, tmax)
-        plt.figure(figsize=(10,4))
-        plt.subplot(2,1,1)
-        plt.plot(x[samp_plt],'k')
+        tmax = np.min((len(x_bandpow), 5000))
+        samp_plt = range(0, tmax)
+        plt.figure(figsize=(10, 4))
+        plt.subplot(2, 1, 1)
+        plt.plot(x[samp_plt], 'k')
         plt.ylabel('Voltage (uV)')
-        plt.subplot(2,1,2)
-        plt.semilogy(x_bandpow[samp_plt],'r')
-        plt.semilogy(range(tmax),[powthresh]*tmax,'k--')
+        plt.subplot(2, 1, 2)
+        plt.semilogy(x_bandpow[samp_plt], 'r')
+        plt.semilogy(range(tmax), [powthresh] * tmax, 'k--')
         plt.ylabel('Band power')
         plt.xlabel('Time (samples)')
 
@@ -1143,9 +1164,11 @@ def oscdetect_whitten(x, f_range, Fs, f_slope,
     isosc = x_bandpow > powthresh
 
     # Reject oscillations that are too short
-    min_burst_length = int(np.ceil(3 * Fs / float(f_range[1]))) # 3 cycles of fastest freq
-    isosc_noshort, osc_starts, osc_ends = _rmv_short_periods_whitten(isosc, min_burst_length)
-    
+    # 3 cycles of fastest freq
+    min_burst_length = int(np.ceil(3 * Fs / float(f_range[1])))
+    isosc_noshort, osc_starts, osc_ends = _rmv_short_periods_whitten(
+        isosc, min_burst_length)
+
     if return_oscbounds:
         if return_powerts:
             return osc_starts, osc_ends, x_bandpow
@@ -1154,21 +1177,21 @@ def oscdetect_whitten(x, f_range, Fs, f_slope,
         if return_powerts:
             return isosc_noshort, x_bandpow
         return isosc_noshort
-    
-    
+
+
 def _rmv_short_periods_whitten(x, N):
     """Remove periods that ==1 for less than N samples"""
-    
-    if np.sum(x)==0:
+
+    if np.sum(x) == 0:
         return x
-        
-    osc_changes = np.diff(1*x)
-    osc_starts = np.where(osc_changes==1)[0]
-    osc_ends = np.where(osc_changes==-1)[0]
-    
-    if len(osc_starts)==0:
+
+    osc_changes = np.diff(1 * x)
+    osc_starts = np.where(osc_changes == 1)[0]
+    osc_ends = np.where(osc_changes == -1)[0]
+
+    if len(osc_starts) == 0:
         osc_starts = [0]
-    if len(osc_ends)==0:
+    if len(osc_ends) == 0:
         osc_ends = [len(osc_changes)]
 
     if osc_ends[0] < osc_starts[0]:
@@ -1177,8 +1200,8 @@ def _rmv_short_periods_whitten(x, N):
         osc_ends = np.append(osc_ends, len(osc_changes))
 
     osc_length = osc_ends - osc_starts
-    osc_starts_long = osc_starts[osc_length>=N]
-    osc_ends_long = osc_ends[osc_length>=N]
+    osc_starts_long = osc_starts[osc_length >= N]
+    osc_ends_long = osc_ends[osc_length >= N]
 
     is_osc = np.zeros(len(x))
     for osc in range(len(osc_starts_long)):
@@ -1186,10 +1209,10 @@ def _rmv_short_periods_whitten(x, N):
     return is_osc, osc_starts_long, osc_ends_long
 
 
-def signal_to_bursts(x, f_range, Fs, burst_fn = None, burst_kwargs = None):
+def signal_to_bursts(x, f_range, Fs, burst_fn=None, burst_kwargs=None):
     """
     Separate a signal into time periods of oscillatory bursts
-    
+
     Parameters
     ----------
     x : array-like 1d
@@ -1202,7 +1225,7 @@ def signal_to_bursts(x, f_range, Fs, burst_fn = None, burst_kwargs = None):
         function to use to filter original time series, x
     burst_kwargs : dict
         keyword arguments to the burst_fn
-        
+
     Returns
     -------
     x_bursts : numpy array of array-like 1d
@@ -1210,114 +1233,114 @@ def signal_to_bursts(x, f_range, Fs, burst_fn = None, burst_kwargs = None):
     burst_filter : array-like 1d
         filter kernel used in identifying bursts
     """
-    
+
     # Initialize burst detection parameters
     if burst_fn is None:
         burst_fn = oscdetect_thresh
 
     if burst_kwargs is None:
         burst_kwargs = {}
-        
+
     # Apply burst detection
     isburst, burst_filter = burst_fn(x, f_range, Fs, **burst_kwargs)
-    
+
     # Confirm burst detection
     if np.sum(isburst) == 0:
         print('No bursts detected. Adjust burst detector settings or reject signal.')
         return None, None
-    
+
     # Separate x into bursts
     x_bursts = _binarytochunk(x, isburst)
     return x_bursts, burst_filter
-    
-    
+
+
 def _binarytochunk(x, binary_array):
     """Outputs chunks of x in which binary_array is continuously 1"""
-    
+
     # Find beginnings and ends of bursts
     binary_diffs = np.diff(binary_array)
     binary_diffs = np.insert(binary_diffs, 0, 0)
     begin_bursts = np.where(binary_diffs == 1)[0]
     end_bursts = np.where(binary_diffs == -1)[0]
-    
+
     # Identify if bursts lie at the beginning or end of recording
     if begin_bursts[0] > end_bursts[0]:
         begin_bursts = np.insert(begin_bursts, 0, 0)
     if begin_bursts[-1] > end_bursts[-1]:
         end_bursts = np.append(end_bursts, len(x))
-        
+
     # Make array of each burst
     Nbursts = len(begin_bursts)
     bursts = np.zeros(Nbursts, dtype=object)
     for b in range(Nbursts):
         bursts[b] = x[begin_bursts[b]:end_bursts[b]]
-    
+
     return bursts
-    
+
 
 def bursts_count(bursts_binary):
     """Calculate number of bursts based off the binary burst indicator"""
     # Find beginnings and ends of bursts
-    if np.sum(bursts_binary)==0:
+    if np.sum(bursts_binary) == 0:
         return 0
-        
+
     binary_diffs = np.diff(bursts_binary)
     binary_diffs = np.insert(binary_diffs, 0, 0)
     begin_bursts = np.where(binary_diffs == 1)[0]
     end_bursts = np.where(binary_diffs == -1)[0]
 
-    if len(begin_bursts)==0:
-       begin_bursts = [0]
-    if len(end_bursts)==0:
+    if len(begin_bursts) == 0:
+        begin_bursts = [0]
+    if len(end_bursts) == 0:
         end_bursts = [len(binary_diffs)]
-    
+
     # Identify if bursts lie at the beginning or end of recording
     if begin_bursts[0] > end_bursts[0]:
         begin_bursts = np.insert(begin_bursts, 0, 0)
     return len(begin_bursts)
-    
-    
+
+
 def bursts_fraction(bursts_binary):
     """Calculate fraction of time bursting"""
     return np.mean(bursts_binary)
-    
-    
+
+
 def bursts_durations(bursts_binary, Fs):
     """Calculate the duration of each burst"""
     # Find beginnings and ends of bursts
-    if np.sum(bursts_binary)==0:
+    if np.sum(bursts_binary) == 0:
         return 0
-        
+
     binary_diffs = np.diff(bursts_binary)
     binary_diffs = np.insert(binary_diffs, 0, 0)
     begin_bursts = np.where(binary_diffs == 1)[0]
     end_bursts = np.where(binary_diffs == -1)[0]
 
-    if len(begin_bursts)==0:
+    if len(begin_bursts) == 0:
         begin_bursts = [0]
-    if len(end_bursts)==0:
+    if len(end_bursts) == 0:
         end_bursts = [len(binary_diffs)]
-    
+
     # Identify if bursts lie at the beginning or end of recording
     if begin_bursts[0] > end_bursts[0]:
         begin_bursts = np.insert(begin_bursts, 0, 0)
     if begin_bursts[-1] > end_bursts[-1]:
         end_bursts = np.append(end_bursts, len(bursts_binary))
-        
+
     # Make array of each burst
     Nbursts = len(begin_bursts)
     lens = np.zeros(Nbursts, dtype=object)
     for b in range(Nbursts):
         lens[b] = end_bursts[b] - begin_bursts[b]
-    lens = lens/float(Fs)
+    lens = lens / float(Fs)
     return lens
-    
+
 
 def wfpha(x, Ps, Ts):
     """
     Use peaks and troughs calculated with findpt to calculate an instantaneous
     phase estimate over time
-    
+
     Parameters
     ----------
     x : array-like 1d
@@ -1326,7 +1349,7 @@ def wfpha(x, Ps, Ts):
         time points of oscillatory peaks
     Ts : array-like 1d
         time points of oscillatory troughs
-        
+
     Returns
     -------
     pha : array-like 1d
@@ -1337,7 +1360,7 @@ def wfpha(x, Ps, Ts):
     L = len(x)
     pha = np.empty(L)
     pha[:] = np.NAN
-    
+
     pha[Ps] = 0
     pha[Ts] = -np.pi
 
@@ -1379,12 +1402,12 @@ def wfpha(x, Ps, Ts):
     pha = np.angle(np.exp(1j * pha))
 
     return pha
-    
-    
-def slope(f, psd, fslopelim = (80,200), flatten_thresh = 0):
+
+
+def slope(f, psd, fslopelim=(80, 200), flatten_thresh=0):
     '''
     Calculate the slope of the power spectrum
-    
+
     Parameters
     ----------
     f : array
@@ -1395,7 +1418,7 @@ def slope(f, psd, fslopelim = (80,200), flatten_thresh = 0):
         frequency range to fit slope
     flatten_thresh : float
         See foof.utils
-        
+
     Returns
     -------
     slope : float
@@ -1404,11 +1427,11 @@ def slope(f, psd, fslopelim = (80,200), flatten_thresh = 0):
         linear fit of the PSD in log-log space (includes information of offset)
     slopelineF : array
         frequency array corresponding to slopebyf
-    
+
     '''
-    fslopeidx = np.logical_and(f>=fslopelim[0],f<=fslopelim[1])
+    fslopeidx = np.logical_and(f >= fslopelim[0], f <= fslopelim[1])
     slopelineF = f[fslopeidx]
-    
+
     x = np.log10(slopelineF)
     y = np.log10(psd[fslopeidx])
 
@@ -1423,15 +1446,15 @@ def slope(f, psd, fslopelim = (80,200), flatten_thresh = 0):
     slopes = slopes[0]
 
     return slopes, slopelineP, slopelineF
-    
-    
-def spectral_slope(f, psd, f_sampleslope = np.arange(80,200), flatten_thresh = 0):
+
+
+def spectral_slope(f, psd, f_sampleslope=np.arange(80, 200), flatten_thresh=0):
     '''
     Calculate the slope of the power spectrum
-    
+
     NOTE:
     This is an update to the 'slope' function that should be deprecated
-    
+
     Parameters
     ----------
     f : array
@@ -1442,7 +1465,7 @@ def spectral_slope(f, psd, f_sampleslope = np.arange(80,200), flatten_thresh = 0
         frequency range to fit slope
     flatten_thresh : float
         See foof.utils
-        
+
     Returns
     -------
     slope_value : float
@@ -1451,8 +1474,8 @@ def spectral_slope(f, psd, f_sampleslope = np.arange(80,200), flatten_thresh = 0
         linear fit of the PSD in log-log space (includes information of offset)
     fit_logpower : array
         frequency array corresponding to slopebyf
-    
-    '''    
+
+    '''
     # Define frequency and power values to fit in log-log space
     fit_logf = np.log10(f_sampleslope)
     y = np.log10(psd[f_sampleslope.astype(int)])
@@ -1460,7 +1483,7 @@ def spectral_slope(f, psd, f_sampleslope = np.arange(80,200), flatten_thresh = 0
     # Fit a linear model
     lm = linear_model.RANSACRegressor(random_state=42)
     lm.fit(fit_logf[:, np.newaxis], y)
-    
+
     # Find the line of best fit using the provided frequencies
     fit_logpower = lm.predict(fit_logf[:, np.newaxis])
     psd_flat = y - fit_logpower.flatten()
